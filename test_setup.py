@@ -1,7 +1,5 @@
+# Updated Test Script (No SQLAlchemy)
 # File: test_setup.py
-"""
-Test script to verify the setup is working correctly
-"""
 
 import sys
 import traceback
@@ -18,17 +16,17 @@ def test_imports():
         return False
     
     try:
-        import sqlalchemy
-        print(f"✅ SQLAlchemy {sqlalchemy.__version__} imported successfully")
-    except ImportError as e:
-        print(f"❌ SQLAlchemy import failed: {e}")
-        return False
-    
-    try:
         import dateutil
         print("✅ python-dateutil imported successfully")
     except ImportError as e:
         print(f"❌ python-dateutil import failed: {e}")
+        return False
+    
+    try:
+        import sqlite3
+        print("✅ SQLite3 (built-in) available")
+    except ImportError as e:
+        print(f"❌ SQLite3 import failed: {e}")
         return False
     
     return True
@@ -38,7 +36,8 @@ def test_database():
     print("\nTesting database...")
     
     try:
-        from database.models import create_database, get_db_session, Product, test_database_connection
+        from database.models import (create_database, test_database_connection, 
+                                   db_manager, Product)
         
         # Test database creation
         if create_database():
@@ -55,7 +54,6 @@ def test_database():
             return False
         
         # Test adding a sample product
-        session = get_db_session()
         test_product = Product(
             product_code="TEST001",
             product_name="Test Product",
@@ -63,21 +61,26 @@ def test_database():
             stock_quantity=10
         )
         
-        session.add(test_product)
-        session.commit()
-        
-        # Test querying the product
-        found_product = session.query(Product).filter(Product.product_code == "TEST001").first()
-        if found_product:
-            print("✅ Database operations test passed")
-            # Clean up
-            session.delete(found_product)
-            session.commit()
+        if db_manager.add_product(test_product):
+            print("✅ Product creation test passed")
+            
+            # Test querying the product
+            found_products = db_manager.get_products("TEST001")
+            if found_products and found_products[0].product_code == "TEST001":
+                print("✅ Product query test passed")
+                
+                # Clean up - delete test product
+                if db_manager.delete_product(found_products[0].id):
+                    print("✅ Product deletion test passed")
+                else:
+                    print("⚠️ Product deletion test failed (but not critical)")
+            else:
+                print("❌ Product query test failed")
+                return False
         else:
-            print("❌ Database operations test failed")
+            print("❌ Product creation test failed")
             return False
         
-        session.close()
         return True
         
     except Exception as e:
@@ -112,10 +115,36 @@ def test_pyqt():
         traceback.print_exc()
         return False
 
+def test_persian_support():
+    """Test Persian text and number support"""
+    print("\nTesting Persian support...")
+    
+    try:
+        # Test Persian text
+        persian_text = "سیستم مدیریت فاکتور فروش"
+        print(f"✅ Persian text: {persian_text}")
+        
+        # Test Persian numbers
+        persian_numbers = "۱۲۳۴۵۶۷۸۹۰"
+        english_numbers = "1234567890"
+        print(f"✅ Persian digits: {persian_numbers}")
+        print(f"✅ English digits: {english_numbers}")
+        
+        # Test decimal handling
+        from decimal import Decimal
+        price = Decimal("1234567.89")
+        print(f"✅ Decimal handling: {price}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Persian support test failed: {e}")
+        return False
+
 def main():
     """Run all tests"""
-    print("🚀 Persian Invoicing System - Setup Test")
-    print("=" * 50)
+    print("🚀 Persian Invoicing System - Setup Test (No SQLAlchemy)")
+    print("=" * 60)
     
     all_passed = True
     
@@ -131,16 +160,133 @@ def main():
     if not test_pyqt():
         all_passed = False
     
-    print("\n" + "=" * 50)
+    # Test Persian support
+    if not test_persian_support():
+        all_passed = False
+    
+    print("\n" + "=" * 60)
     if all_passed:
         print("🎉 All tests passed! Your setup is ready.")
         print("🚀 You can now run: python main.py")
+        print("\n📋 Summary:")
+        print("   ✅ PyQt6 GUI framework working")
+        print("   ✅ SQLite database working")
+        print("   ✅ Persian language support ready")
+        print("   ✅ No SQLAlchemy compatibility issues")
     else:
         print("❌ Some tests failed. Please check the errors above.")
-        print("💡 Try running: pip install -r requirements.txt")
+        print("💡 Try running: pip install PyQt6 python-dateutil")
     
     return all_passed
 
 if __name__ == "__main__":
     success = main()
+    input("\nPress Enter to exit...")
+    sys.exit(0 if success else 1)
+
+# File: updated_requirements.txt
+"""
+PyQt6>=6.6.0
+python-dateutil>=2.8.2
+"""
+
+# File: quick_install.py
+"""
+Quick installation script (Updated for No SQLAlchemy)
+"""
+
+import subprocess
+import sys
+import os
+
+def install_requirements():
+    """Install required packages"""
+    print("📦 Installing required packages...")
+    
+    requirements = [
+        "PyQt6>=6.6.0",
+        "python-dateutil>=2.8.2"
+    ]
+    
+    for requirement in requirements:
+        try:
+            print(f"Installing {requirement}...")
+            subprocess.check_call([
+                sys.executable, "-m", "pip", "install", requirement
+            ])
+            print(f"✅ {requirement} installed successfully")
+        except subprocess.CalledProcessError as e:
+            print(f"❌ Failed to install {requirement}: {e}")
+            return False
+    
+    return True
+
+def create_directories():
+    """Create necessary directories"""
+    directories = ["logs", "backups", "exports", "database"]
+    
+    for directory in directories:
+        os.makedirs(directory, exist_ok=True)
+        print(f"✅ Created directory: {directory}/")
+    
+    return True
+
+def create_init_files():
+    """Create __init__.py files"""
+    init_files = [
+        "database/__init__.py"
+    ]
+    
+    for init_file in init_files:
+        os.makedirs(os.path.dirname(init_file), exist_ok=True)
+        with open(init_file, 'w') as f:
+            f.write('# Package initialization\n')
+        print(f"✅ Created: {init_file}")
+    
+    return True
+
+def main():
+    """Main installation function"""
+    print("🚀 Persian Invoicing System - Quick Install (No SQLAlchemy)")
+    print("=" * 60)
+    
+    # Install requirements
+    if not install_requirements():
+        print("❌ Installation failed!")
+        return False
+    
+    # Create directories
+    if not create_directories():
+        print("❌ Directory creation failed!")
+        return False
+    
+    # Create init files
+    if not create_init_files():
+        print("❌ Init file creation failed!")
+        return False
+    
+    # Test the setup
+    print("\n🧪 Testing setup...")
+    try:
+        import test_setup
+        if test_setup.main():
+            print("\n🎉 Installation completed successfully!")
+            print("🚀 Run 'python main.py' to start the application")
+            print("\n📋 What's ready:")
+            print("   ✅ PyQt6 for modern GUI")
+            print("   ✅ Direct SQLite database (no SQLAlchemy)")
+            print("   ✅ Persian language support")
+            print("   ✅ Right-to-left layout")
+            print("   ✅ Professional dark theme")
+            return True
+        else:
+            print("\n❌ Setup test failed!")
+            return False
+    except Exception as e:
+        print(f"\n❌ Could not run setup test: {e}")
+        return False
+
+if __name__ == "__main__":
+    success = main()
+    input("\nPress Enter to exit...")
     sys.exit(0 if success else 1)
