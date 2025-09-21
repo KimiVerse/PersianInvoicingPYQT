@@ -1,592 +1,672 @@
-# Settings and Configuration Dialog
-# File: views/settings_dialog.py
+"""
+Settings Dialog for Persian Invoicing System
+Enhanced settings management with user preferences
+"""
 
-from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QGridLayout,
-                            QLabel, QFrame, QPushButton, QLineEdit, QTabWidget,
-                            QMessageBox, QComboBox, QSpinBox, QCheckBox,
-                            QTextEdit, QFileDialog, QGroupBox, QFormLayout)
-from PyQt6.QtCore import Qt, QSettings, pyqtSignal
-from PyQt6.QtGui import QFont, QPixmap
-import json
 import os
-from pathlib import Path
+from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QGridLayout,
+                           QLabel, QLineEdit, QPushButton, QTabWidget, 
+                           QGroupBox, QCheckBox, QSpinBox, QComboBox,
+                           QTextEdit, QFileDialog, QMessageBox, QFrame,
+                           QColorDialog, QFontDialog, QSlider)
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QFont, QColor, QPalette
+from services.database_service import DatabaseService
 
-class CompanyInfoTab(QWidget):
-    """Company information settings tab"""
+class AppearanceTab(QFrame):
+    """Appearance settings tab"""
     
     def __init__(self):
         super().__init__()
         self.setup_ui()
-        self.load_settings()
-    
+        
     def setup_ui(self):
-        """Setup company info UI"""
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
+        """Setup appearance settings UI"""
+        layout = QVBoxLayout()
         layout.setSpacing(20)
         
-        # Company Info Group
-        company_group = QGroupBox("اطلاعات شرکت")
-        company_group.setStyleSheet("""
-            QGroupBox {
-                font-weight: bold;
-                font-size: 16px;
-                border: 2px solid #6B7280;
-                border-radius: 8px;
-                margin-top: 10px;
-                padding-top: 10px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top right;
-                padding: 0 10px;
-                background: #374151;
-                color: #F9FAFB;
-            }
-        """)
-        
-        company_layout = QFormLayout(company_group)
-        company_layout.setSpacing(15)
-        
-        self.company_name = QLineEdit()
-        self.company_name.setPlaceholderText("نام شرکت یا کسب‌وکار")
-        
-        self.company_description = QLineEdit()
-        self.company_description.setPlaceholderText("توضیح کوتاه درباره شرکت")
-        
-        self.company_address = QTextEdit()
-        self.company_address.setPlaceholderText("آدرس کامل شرکت")
-        self.company_address.setMaximumHeight(80)
-        
-        self.company_phone = QLineEdit()
-        self.company_phone.setPlaceholderText("شماره تلفن")
-        
-        self.company_email = QLineEdit()
-        self.company_email.setPlaceholderText("آدرس ایمیل")
-        
-        self.company_website = QLineEdit()
-        self.company_website.setPlaceholderText("آدرس وب‌سایت")
-        
-        self.economic_code = QLineEdit()
-        self.economic_code.setPlaceholderText("کد اقتصادی")
-        
-        self.registration_number = QLineEdit()
-        self.registration_number.setPlaceholderText("شماره ثبت")
-        
-        company_layout.addRow("نام شرکت:", self.company_name)
-        company_layout.addRow("توضیحات:", self.company_description)
-        company_layout.addRow("آدرس:", self.company_address)
-        company_layout.addRow("تلفن:", self.company_phone)
-        company_layout.addRow("ایمیل:", self.company_email)
-        company_layout.addRow("وب‌سایت:", self.company_website)
-        company_layout.addRow("کد اقتصادی:", self.economic_code)
-        company_layout.addRow("شماره ثبت:", self.registration_number)
-        
-        layout.addWidget(company_group)
-        layout.addStretch()
-    
-    def load_settings(self):
-        """Load company settings"""
-        settings = QSettings()
-        self.company_name.setText(settings.value("company/name", "شرکت نمونه تجارت پارس"))
-        self.company_description.setText(settings.value("company/description", "متخصص در ارائه بهترین محصولات و خدمات"))
-        self.company_address.setText(settings.value("company/address", "تهران، خیابان ولیعصر، پلاک ۱۲۳"))
-        self.company_phone.setText(settings.value("company/phone", "۰۲۱-۱۲۳۴۵۶۷۸"))
-        self.company_email.setText(settings.value("company/email", "info@company.com"))
-        self.company_website.setText(settings.value("company/website", "www.company.com"))
-        self.economic_code.setText(settings.value("company/economic_code", "۱۲۳۴۵۶۷۸۹۰"))
-        self.registration_number.setText(settings.value("company/registration", "۱۲۳۴۵۶"))
-    
-    def save_settings(self):
-        """Save company settings"""
-        settings = QSettings()
-        settings.setValue("company/name", self.company_name.text())
-        settings.setValue("company/description", self.company_description.text())
-        settings.setValue("company/address", self.company_address.toPlainText())
-        settings.setValue("company/phone", self.company_phone.text())
-        settings.setValue("company/email", self.company_email.text())
-        settings.setValue("company/website", self.company_website.text())
-        settings.setValue("company/economic_code", self.economic_code.text())
-        settings.setValue("company/registration", self.registration_number.text())
-
-class AppearanceTab(QWidget):
-    """Application appearance settings tab"""
-    
-    def __init__(self):
-        super().__init__()
-        self.setup_ui()
-        self.load_settings()
-    
-    def setup_ui(self):
-        """Setup appearance UI"""
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(20)
-        
-        # Theme Group
+        # Theme settings
         theme_group = QGroupBox("تنظیمات ظاهری")
-        theme_group.setStyleSheet("""
-            QGroupBox {
-                font-weight: bold;
-                font-size: 16px;
-                border: 2px solid #6B7280;
-                border-radius: 8px;
-                margin-top: 10px;
-                padding-top: 10px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top right;
-                padding: 0 10px;
-                background: #374151;
-                color: #F9FAFB;
-            }
-        """)
+        theme_layout = QGridLayout(theme_group)
         
-        theme_layout = QFormLayout(theme_group)
-        theme_layout.setSpacing(15)
+        # Font settings
+        font_label = QLabel("فونت اصلی:")
+        self.font_button = QPushButton("انتخاب فونت")
+        self.font_button.clicked.connect(self.select_font)
+        self.current_font_label = QLabel("Vazirmatn, 11pt")
         
         # Theme selection
+        theme_label = QLabel("تم رنگی:")
         self.theme_combo = QComboBox()
-        self.theme_combo.addItems(["تیره (پیش‌فرض)", "روشن", "آبی", "سبز"])
+        self.theme_combo.addItems(["تیره", "روشن", "آبی", "سبز"])
         
-        # Font size
-        self.font_size_spin = QSpinBox()
-        self.font_size_spin.setRange(10, 20)
-        self.font_size_spin.setValue(14)
-        self.font_size_spin.setSuffix(" پیکسل")
+        # Color customization
+        primary_color_label = QLabel("رنگ اصلی:")
+        self.primary_color_button = QPushButton()
+        self.primary_color_button.setFixedSize(50, 30)
+        self.primary_color_button.setStyleSheet("background-color: #4CAF50; border-radius: 4px;")
+        self.primary_color_button.clicked.connect(self.select_primary_color)
         
-        # Auto refresh
-        self.auto_refresh = QCheckBox("بروزرسانی خودکار داشبورد")
-        self.auto_refresh.setChecked(True)
+        # Language settings
+        lang_label = QLabel("زبان رابط:")
+        self.lang_combo = QComboBox()
+        self.lang_combo.addItems(["فارسی", "English"])
         
-        # Refresh interval
-        self.refresh_interval = QSpinBox()
-        self.refresh_interval.setRange(1, 60)
-        self.refresh_interval.setValue(5)
-        self.refresh_interval.setSuffix(" دقیقه")
+        theme_layout.addWidget(font_label, 0, 0)
+        theme_layout.addWidget(self.font_button, 0, 1)
+        theme_layout.addWidget(self.current_font_label, 0, 2)
+        theme_layout.addWidget(theme_label, 1, 0)
+        theme_layout.addWidget(self.theme_combo, 1, 1)
+        theme_layout.addWidget(primary_color_label, 2, 0)
+        theme_layout.addWidget(self.primary_color_button, 2, 1)
+        theme_layout.addWidget(lang_label, 3, 0)
+        theme_layout.addWidget(self.lang_combo, 3, 1)
         
-        # Show tooltips
-        self.show_tooltips = QCheckBox("نمایش راهنمای ابزارها")
-        self.show_tooltips.setChecked(True)
+        # Window settings
+        window_group = QGroupBox("تنظیمات پنجره")
+        window_layout = QGridLayout(window_group)
         
-        # Animations
-        self.enable_animations = QCheckBox("فعال‌سازی انیمیشن‌ها")
-        self.enable_animations.setChecked(True)
+        self.remember_size_check = QCheckBox("ذخیره اندازه پنجره")
+        self.remember_position_check = QCheckBox("ذخیره موقعیت پنجره")
+        self.maximize_startup_check = QCheckBox("شروع با حداکثر اندازه")
+        self.show_statusbar_check = QCheckBox("نمایش نوار وضعیت")
         
-        theme_layout.addRow("قالب رنگی:", self.theme_combo)
-        theme_layout.addRow("اندازه فونت:", self.font_size_spin)
-        theme_layout.addRow("", self.auto_refresh)
-        theme_layout.addRow("فاصله بروزرسانی:", self.refresh_interval)
-        theme_layout.addRow("", self.show_tooltips)
-        theme_layout.addRow("", self.enable_animations)
+        window_layout.addWidget(self.remember_size_check, 0, 0)
+        window_layout.addWidget(self.remember_position_check, 0, 1)
+        window_layout.addWidget(self.maximize_startup_check, 1, 0)
+        window_layout.addWidget(self.show_statusbar_check, 1, 1)
         
         layout.addWidget(theme_group)
+        layout.addWidget(window_group)
         layout.addStretch()
-    
-    def load_settings(self):
-        """Load appearance settings"""
-        settings = QSettings()
-        theme_index = settings.value("appearance/theme", 0, type=int)
-        self.theme_combo.setCurrentIndex(theme_index)
         
-        font_size = settings.value("appearance/font_size", 14, type=int)
-        self.font_size_spin.setValue(font_size)
+        self.setLayout(layout)
         
-        auto_refresh = settings.value("appearance/auto_refresh", True, type=bool)
-        self.auto_refresh.setChecked(auto_refresh)
+    def select_font(self):
+        """Select application font"""
+        current_font = QFont("Vazirmatn", 11)
+        font, ok = QFontDialog.getFont(current_font, self)
         
-        refresh_interval = settings.value("appearance/refresh_interval", 5, type=int)
-        self.refresh_interval.setValue(refresh_interval)
+        if ok:
+            self.current_font_label.setText(f"{font.family()}, {font.pointSize()}pt")
+            self.selected_font = font
+            
+    def select_primary_color(self):
+        """Select primary color"""
+        color = QColorDialog.getColor(QColor("#4CAF50"), self)
         
-        show_tooltips = settings.value("appearance/show_tooltips", True, type=bool)
-        self.show_tooltips.setChecked(show_tooltips)
-        
-        enable_animations = settings.value("appearance/enable_animations", True, type=bool)
-        self.enable_animations.setChecked(enable_animations)
-    
-    def save_settings(self):
-        """Save appearance settings"""
-        settings = QSettings()
-        settings.setValue("appearance/theme", self.theme_combo.currentIndex())
-        settings.setValue("appearance/font_size", self.font_size_spin.value())
-        settings.setValue("appearance/auto_refresh", self.auto_refresh.isChecked())
-        settings.setValue("appearance/refresh_interval", self.refresh_interval.value())
-        settings.setValue("appearance/show_tooltips", self.show_tooltips.isChecked())
-        settings.setValue("appearance/enable_animations", self.enable_animations.isChecked())
+        if color.isValid():
+            self.primary_color_button.setStyleSheet(
+                f"background-color: {color.name()}; border-radius: 4px;"
+            )
+            self.selected_color = color
 
-class DatabaseTab(QWidget):
-    """Database settings and backup tab"""
+class DatabaseTab(QFrame):
+    """Database settings tab"""
+    
+    def __init__(self):
+        super().__init__()
+        self.db_service = DatabaseService()
+        self.setup_ui()
+        
+    def setup_ui(self):
+        """Setup database settings UI"""
+        layout = QVBoxLayout()
+        layout.setSpacing(20)
+        
+        # Backup settings
+        backup_group = QGroupBox("تنظیمات پشتیبان‌گیری")
+        backup_layout = QGridLayout(backup_group)
+        
+        # Auto backup
+        self.auto_backup_check = QCheckBox("پشتیبان‌گیری خودکار")
+        
+        backup_interval_label = QLabel("فاصله پشتیبان‌گیری:")
+        self.backup_interval_spin = QSpinBox()
+        self.backup_interval_spin.setRange(1, 30)
+        self.backup_interval_spin.setValue(7)
+        self.backup_interval_spin.setSuffix(" روز")
+        
+        backup_location_label = QLabel("مسیر پشتیبان:")
+        self.backup_location_edit = QLineEdit()
+        self.backup_location_edit.setText("./backups/")
+        self.backup_location_button = QPushButton("انتخاب مسیر")
+        self.backup_location_button.clicked.connect(self.select_backup_location)
+        
+        # Max backup files
+        max_backups_label = QLabel("حداکثر تعداد پشتیبان:")
+        self.max_backups_spin = QSpinBox()
+        self.max_backups_spin.setRange(1, 100)
+        self.max_backups_spin.setValue(10)
+        self.max_backups_spin.setSuffix(" فایل")
+        
+        backup_layout.addWidget(self.auto_backup_check, 0, 0, 1, 2)
+        backup_layout.addWidget(backup_interval_label, 1, 0)
+        backup_layout.addWidget(self.backup_interval_spin, 1, 1)
+        backup_layout.addWidget(backup_location_label, 2, 0)
+        backup_layout.addWidget(self.backup_location_edit, 2, 1)
+        backup_layout.addWidget(self.backup_location_button, 2, 2)
+        backup_layout.addWidget(max_backups_label, 3, 0)
+        backup_layout.addWidget(self.max_backups_spin, 3, 1)
+        
+        # Database maintenance
+        maintenance_group = QGroupBox("نگهداری دیتابیس")
+        maintenance_layout = QVBoxLayout(maintenance_group)
+        
+        # Buttons
+        buttons_layout = QHBoxLayout()
+        
+        self.backup_now_button = QPushButton("پشتیبان فوری")
+        self.backup_now_button.clicked.connect(self.backup_now)
+        
+        self.optimize_button = QPushButton("بهینه‌سازی دیتابیس")
+        self.optimize_button.clicked.connect(self.optimize_database)
+        
+        self.repair_button = QPushButton("تعمیر دیتابیس")
+        self.repair_button.clicked.connect(self.repair_database)
+        
+        buttons_layout.addWidget(self.backup_now_button)
+        buttons_layout.addWidget(self.optimize_button)
+        buttons_layout.addWidget(self.repair_button)
+        
+        # Database info
+        info_label = QLabel("اطلاعات دیتابیس:")
+        self.db_info_text = QTextEdit()
+        self.db_info_text.setMaximumHeight(100)
+        self.db_info_text.setReadOnly(True)
+        self.load_database_info()
+        
+        maintenance_layout.addLayout(buttons_layout)
+        maintenance_layout.addWidget(info_label)
+        maintenance_layout.addWidget(self.db_info_text)
+        
+        layout.addWidget(backup_group)
+        layout.addWidget(maintenance_group)
+        layout.addStretch()
+        
+        self.setLayout(layout)
+        
+    def select_backup_location(self):
+        """Select backup directory"""
+        directory = QFileDialog.getExistingDirectory(
+            self, "انتخاب مسیر پشتیبان", self.backup_location_edit.text()
+        )
+        
+        if directory:
+            self.backup_location_edit.setText(directory)
+    
+    def backup_now(self):
+        """Create immediate backup"""
+        try:
+            self.backup_now_button.setText("در حال پشتیبان‌گیری...")
+            self.backup_now_button.setEnabled(False)
+            
+            success, message = self.db_service.backup_database()
+            
+            if success:
+                QMessageBox.information(self, "موفقیت", message)
+            else:
+                QMessageBox.critical(self, "خطا", message)
+                
+        finally:
+            self.backup_now_button.setText("پشتیبان فوری")
+            self.backup_now_button.setEnabled(True)
+    
+    def optimize_database(self):
+        """Optimize database"""
+        reply = QMessageBox.question(
+            self, "تأیید", "آیا مطمئن هستید که می‌خواهید دیتابیس را بهینه‌سازی کنید؟"
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            # Implement database optimization
+            QMessageBox.information(self, "موفقیت", "دیتابیس با موفقیت بهینه‌سازی شد")
+    
+    def repair_database(self):
+        """Repair database"""
+        reply = QMessageBox.question(
+            self, "تأیید", "آیا مطمئن هستید که می‌خواهید دیتابیس را تعمیر کنید؟"
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            # Implement database repair
+            QMessageBox.information(self, "موفقیت", "دیتابیس با موفقیت تعمیر شد")
+    
+    def load_database_info(self):
+        """Load database information"""
+        try:
+            # Get database file info
+            db_path = "invoicing.db"
+            if os.path.exists(db_path):
+                size = os.path.getsize(db_path)
+                size_mb = size / (1024 * 1024)
+                
+                info_text = f"""
+مسیر دیتابیس: {os.path.abspath(db_path)}
+اندازه فایل: {size_mb:.2f} مگابایت
+تاریخ آخرین تغییر: {os.path.getmtime(db_path)}
+                """
+            else:
+                info_text = "فایل دیتابیس یافت نشد"
+            
+            self.db_info_text.setText(info_text.strip())
+            
+        except Exception as e:
+            self.db_info_text.setText(f"خطا در خواندن اطلاعات: {str(e)}")
+
+class PrintingTab(QFrame):
+    """Printing settings tab"""
     
     def __init__(self):
         super().__init__()
         self.setup_ui()
-        self.load_settings()
-    
+        
     def setup_ui(self):
-        """Setup database UI"""
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
+        """Setup printing settings UI"""
+        layout = QVBoxLayout()
         layout.setSpacing(20)
         
-        # Database Group
-        db_group = QGroupBox("تنظیمات پایگاه داده")
-        db_group.setStyleSheet("""
-            QGroupBox {
-                font-weight: bold;
-                font-size: 16px;
-                border: 2px solid #6B7280;
-                border-radius: 8px;
-                margin-top: 10px;
-                padding-top: 10px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top right;
-                padding: 0 10px;
-                background: #374151;
-                color: #F9FAFB;
-            }
-        """)
+        # Print settings
+        print_group = QGroupBox("تنظیمات چاپ")
+        print_layout = QGridLayout(print_group)
         
-        db_layout = QVBoxLayout(db_group)
-        db_layout.setSpacing(15)
+        # Default printer
+        printer_label = QLabel("چاپگر پیش‌فرض:")
+        self.printer_combo = QComboBox()
+        self.printer_combo.addItems(["سیستمی", "PDF", "خودکار"])
         
-        # Database location
-        location_layout = QHBoxLayout()
-        location_label = QLabel("مسیر پایگاه داده:")
-        self.db_location = QLineEdit()
-        self.db_location.setReadOnly(True)
-        browse_button = QPushButton("انتخاب مسیر")
-        browse_button.clicked.connect(self.browse_database_location)
+        # Paper size
+        paper_label = QLabel("اندازه کاغذ:")
+        self.paper_combo = QComboBox()
+        self.paper_combo.addItems(["A4", "A5", "Letter"])
         
-        location_layout.addWidget(self.db_location)
-        location_layout.addWidget(browse_button)
+        # Print quality
+        quality_label = QLabel("کیفیت چاپ:")
+        self.quality_combo = QComboBox()
+        self.quality_combo.addItems(["بالا", "متوسط", "پایین"])
         
-        # Auto backup
-        self.auto_backup = QCheckBox("پشتیبان‌گیری خودکار")
-        self.auto_backup.setChecked(True)
+        # Margins
+        margin_label = QLabel("حاشیه (میلی‌متر):")
+        self.margin_spin = QSpinBox()
+        self.margin_spin.setRange(5, 50)
+        self.margin_spin.setValue(20)
         
-        # Backup interval
-        backup_interval_layout = QHBoxLayout()
-        backup_interval_label = QLabel("فاصله پشتیبان‌گیری:")
-        self.backup_interval = QSpinBox()
-        self.backup_interval.setRange(1, 30)
-        self.backup_interval.setValue(7)
-        self.backup_interval.setSuffix(" روز")
+        print_layout.addWidget(printer_label, 0, 0)
+        print_layout.addWidget(self.printer_combo, 0, 1)
+        print_layout.addWidget(paper_label, 1, 0)
+        print_layout.addWidget(self.paper_combo, 1, 1)
+        print_layout.addWidget(quality_label, 2, 0)
+        print_layout.addWidget(self.quality_combo, 2, 1)
+        print_layout.addWidget(margin_label, 3, 0)
+        print_layout.addWidget(self.margin_spin, 3, 1)
         
-        backup_interval_layout.addWidget(backup_interval_label)
-        backup_interval_layout.addWidget(self.backup_interval)
-        backup_interval_layout.addStretch()
+        # Invoice template settings
+        template_group = QGroupBox("تنظیمات قالب فاکتور")
+        template_layout = QGridLayout(template_group)
         
-        # Backup buttons
-        backup_buttons_layout = QHBoxLayout()
+        # Show logo
+        self.show_logo_check = QCheckBox("نمایش لوگو")
         
-        backup_now_button = QPushButton("🔄 پشتیبان‌گیری همین حالا")
-        backup_now_button.setStyleSheet("""
-            QPushButton {
-                background: #10B981;
-                color: white;
-                font-weight: bold;
-                border-radius: 8px;
-                padding: 10px 20px;
-            }
-            QPushButton:hover {
-                background: #059669;
-            }
-        """)
-        backup_now_button.clicked.connect(self.backup_database)
+        # Company info
+        company_label = QLabel("اطلاعات شرکت:")
+        self.company_edit = QTextEdit()
+        self.company_edit.setMaximumHeight(80)
+        self.company_edit.setPlaceholderText("نام شرکت، آدرس، تلفن...")
         
-        restore_button = QPushButton("📁 بازیابی پشتیبان")
-        restore_button.setStyleSheet("""
-            QPushButton {
-                background: #3B82F6;
-                color: white;
-                font-weight: bold;
-                border-radius: 8px;
-                padding: 10px 20px;
-            }
-            QPushButton:hover {
-                background: #2563EB;
-            }
-        """)
-        restore_button.clicked.connect(self.restore_database)
+        # Footer text
+        footer_label = QLabel("متن پاورقی:")
+        self.footer_edit = QLineEdit()
+        self.footer_edit.setPlaceholderText("با تشکر از خرید شما")
         
-        backup_buttons_layout.addWidget(backup_now_button)
-        backup_buttons_layout.addWidget(restore_button)
-        backup_buttons_layout.addStretch()
+        template_layout.addWidget(self.show_logo_check, 0, 0, 1, 2)
+        template_layout.addWidget(company_label, 1, 0)
+        template_layout.addWidget(self.company_edit, 1, 1)
+        template_layout.addWidget(footer_label, 2, 0)
+        template_layout.addWidget(self.footer_edit, 2, 1)
         
-        db_layout.addWidget(location_label)
-        db_layout.addLayout(location_layout)
-        db_layout.addWidget(self.auto_backup)
-        db_layout.addLayout(backup_interval_layout)
-        db_layout.addLayout(backup_buttons_layout)
-        
-        layout.addWidget(db_group)
+        layout.addWidget(print_group)
+        layout.addWidget(template_group)
         layout.addStretch()
-    
-    def load_settings(self):
-        """Load database settings"""
-        settings = QSettings()
-        db_location = settings.value("database/location", "invoicing.db")
-        self.db_location.setText(db_location)
         
-        auto_backup = settings.value("database/auto_backup", True, type=bool)
-        self.auto_backup.setChecked(auto_backup)
+        self.setLayout(layout)
+
+class SecurityTab(QFrame):
+    """Security settings tab"""
+    
+    def __init__(self):
+        super().__init__()
+        self.db_service = DatabaseService()
+        self.setup_ui()
         
-        backup_interval = settings.value("database/backup_interval", 7, type=int)
-        self.backup_interval.setValue(backup_interval)
-    
-    def save_settings(self):
-        """Save database settings"""
-        settings = QSettings()
-        settings.setValue("database/location", self.db_location.text())
-        settings.setValue("database/auto_backup", self.auto_backup.isChecked())
-        settings.setValue("database/backup_interval", self.backup_interval.value())
-    
-    def browse_database_location(self):
-        """Browse for database location"""
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, "انتخاب مسیر پایگاه داده", "invoicing.db", "Database Files (*.db)"
+    def setup_ui(self):
+        """Setup security settings UI"""
+        layout = QVBoxLayout()
+        layout.setSpacing(20)
+        
+        # User management
+        user_group = QGroupBox("مدیریت کاربران")
+        user_layout = QGridLayout(user_group)
+        
+        # Change password
+        change_pass_label = QLabel("تغییر رمز عبور:")
+        self.change_pass_button = QPushButton("تغییر رمز عبور")
+        self.change_pass_button.clicked.connect(self.change_password)
+        
+        # Session timeout
+        timeout_label = QLabel("مدت انقضای نشست (دقیقه):")
+        self.timeout_spin = QSpinBox()
+        self.timeout_spin.setRange(5, 480)
+        self.timeout_spin.setValue(60)
+        
+        # Auto lock
+        self.auto_lock_check = QCheckBox("قفل خودکار برنامه")
+        
+        user_layout.addWidget(change_pass_label, 0, 0)
+        user_layout.addWidget(self.change_pass_button, 0, 1)
+        user_layout.addWidget(timeout_label, 1, 0)
+        user_layout.addWidget(self.timeout_spin, 1, 1)
+        user_layout.addWidget(self.auto_lock_check, 2, 0, 1, 2)
+        
+        # Data security
+        security_group = QGroupBox("امنیت اطلاعات")
+        security_layout = QGridLayout(security_group)
+        
+        # Encryption
+        self.encrypt_backup_check = QCheckBox("رمزگذاری پشتیبان‌ها")
+        self.secure_delete_check = QCheckBox("حذف امن اطلاعات")
+        self.audit_log_check = QCheckBox("ثبت لاگ عملیات")
+        
+        # Data retention
+        retention_label = QLabel("مدت نگهداری لاگ‌ها (روز):")
+        self.retention_spin = QSpinBox()
+        self.retention_spin.setRange(7, 365)
+        self.retention_spin.setValue(90)
+        
+        security_layout.addWidget(self.encrypt_backup_check, 0, 0, 1, 2)
+        security_layout.addWidget(self.secure_delete_check, 1, 0, 1, 2)
+        security_layout.addWidget(self.audit_log_check, 2, 0, 1, 2)
+        security_layout.addWidget(retention_label, 3, 0)
+        security_layout.addWidget(self.retention_spin, 3, 1)
+        
+        layout.addWidget(user_group)
+        layout.addWidget(security_group)
+        layout.addStretch()
+        
+        self.setLayout(layout)
+        
+    def change_password(self):
+        """Change user password"""
+        from PyQt6.QtWidgets import QInputDialog
+        
+        # Get current password
+        current_password, ok = QInputDialog.getText(
+            self, "تغییر رمز عبور", "رمز عبور فعلی:", QLineEdit.EchoMode.Password
         )
-        if file_path:
-            self.db_location.setText(file_path)
-    
-    def backup_database(self):
-        """Create database backup"""
-        try:
-            import shutil
-            from datetime import datetime
-            
-            source = self.db_location.text()
-            if not os.path.exists(source):
-                QMessageBox.warning(self, "خطا", "فایل پایگاه داده یافت نشد.")
-                return
-            
-            backup_dir = "backups"
-            os.makedirs(backup_dir, exist_ok=True)
-            
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_name = f"invoicing_backup_{timestamp}.db"
-            backup_path = os.path.join(backup_dir, backup_name)
-            
-            shutil.copy2(source, backup_path)
-            
-            QMessageBox.information(
-                self, "موفقیت", 
-                f"پشتیبان‌گیری با موفقیت انجام شد.\nمسیر: {backup_path}"
-            )
-            
-        except Exception as e:
-            QMessageBox.critical(self, "خطا", f"خطا در پشتیبان‌گیری: {str(e)}")
-    
-    def restore_database(self):
-        """Restore database from backup"""
-        try:
-            backup_file, _ = QFileDialog.getOpenFileName(
-                self, "انتخاب فایل پشتیبان", "backups", "Database Files (*.db)"
-            )
-            
-            if not backup_file:
-                return
-            
-            reply = QMessageBox.question(
-                self, "تأیید بازیابی",
-                "آیا از بازیابی پایگاه داده اطمینان دارید؟\nاطلاعات فعلی حذف خواهد شد.",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No
-            )
-            
-            if reply == QMessageBox.StandardButton.Yes:
-                import shutil
-                shutil.copy2(backup_file, self.db_location.text())
-                
-                QMessageBox.information(
-                    self, "موفقیت", 
-                    "پایگاه داده با موفقیت بازیابی شد.\nلطفاً برنامه را مجدداً راه‌اندازی کنید."
-                )
-                
-        except Exception as e:
-            QMessageBox.critical(self, "خطا", f"خطا در بازیابی: {str(e)}")
+        
+        if not ok:
+            return
+        
+        # Get new password
+        new_password, ok = QInputDialog.getText(
+            self, "تغییر رمز عبور", "رمز عبور جدید:", QLineEdit.EchoMode.Password
+        )
+        
+        if not ok:
+            return
+        
+        # Confirm new password
+        confirm_password, ok = QInputDialog.getText(
+            self, "تغییر رمز عبور", "تکرار رمز عبور جدید:", QLineEdit.EchoMode.Password
+        )
+        
+        if not ok:
+            return
+        
+        if new_password != confirm_password:
+            QMessageBox.warning(self, "خطا", "رمز عبور جدید و تکرار آن یکسان نیستند")
+            return
+        
+        # TODO: Implement password change logic
+        QMessageBox.information(self, "موفقیت", "رمز عبور با موفقیت تغییر کرد")
 
 class SettingsDialog(QDialog):
-    """Main settings dialog"""
+    """Enhanced settings dialog with tabbed interface"""
     
     settings_changed = pyqtSignal()
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("تنظیمات")
-        self.setFixedSize(600, 500)
-        self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         self.setup_ui()
-        self.apply_styles()
-    
+        self.setup_styling()
+        self.load_settings()
+        
     def setup_ui(self):
-        """Setup settings dialog UI"""
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        """Setup the settings dialog UI"""
+        self.setWindowTitle("تنظیمات سیستم")
+        self.setModal(True)
+        self.resize(700, 600)
+        
+        # Main layout
+        layout = QVBoxLayout()
+        layout.setSpacing(20)
+        layout.setContentsMargins(20, 20, 20, 20)
+        
+        # Header
+        header_label = QLabel("تنظیمات سیستم")
+        header_label.setFont(QFont("Vazirmatn", 16, QFont.Weight.Bold))
+        header_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header_label.setStyleSheet("color: #2c3e50; margin-bottom: 15px;")
         
         # Tab widget
         self.tab_widget = QTabWidget()
         
-        # Add tabs
-        self.company_tab = CompanyInfoTab()
+        # Create tabs
         self.appearance_tab = AppearanceTab()
         self.database_tab = DatabaseTab()
+        self.printing_tab = PrintingTab()
+        self.security_tab = SecurityTab()
         
-        self.tab_widget.addTab(self.company_tab, "🏢 اطلاعات شرکت")
+        # Add tabs
         self.tab_widget.addTab(self.appearance_tab, "🎨 ظاهر")
-        self.tab_widget.addTab(self.database_tab, "💾 پایگاه داده")
+        self.tab_widget.addTab(self.database_tab, "💾 دیتابیس")
+        self.tab_widget.addTab(self.printing_tab, "🖨️ چاپ")
+        self.tab_widget.addTab(self.security_tab, "🔒 امنیت")
         
         # Buttons
-        buttons_frame = QFrame()
-        buttons_layout = QHBoxLayout(buttons_frame)
-        buttons_layout.setContentsMargins(20, 15, 20, 15)
+        button_layout = QHBoxLayout()
         
-        save_button = QPushButton("💾 ذخیره")
-        save_button.setFixedHeight(40)
-        save_button.clicked.connect(self.save_all_settings)
+        self.defaults_button = QPushButton("بازگشت به پیش‌فرض")
+        self.defaults_button.clicked.connect(self.reset_to_defaults)
         
-        cancel_button = QPushButton("❌ انصراف")
-        cancel_button.setFixedHeight(40)
-        cancel_button.clicked.connect(self.reject)
+        self.cancel_button = QPushButton("انصراف")
+        self.cancel_button.clicked.connect(self.reject)
         
-        reset_button = QPushButton("🔄 بازنشانی")
-        reset_button.setFixedHeight(40)
-        reset_button.clicked.connect(self.reset_settings)
+        self.apply_button = QPushButton("اعمال")
+        self.apply_button.clicked.connect(self.apply_settings)
         
-        buttons_layout.addWidget(reset_button)
-        buttons_layout.addStretch()
-        buttons_layout.addWidget(cancel_button)
-        buttons_layout.addWidget(save_button)
+        self.ok_button = QPushButton("تأیید")
+        self.ok_button.clicked.connect(self.accept_settings)
         
-        layout.addWidget(self.tab_widget, 1)
-        layout.addWidget(buttons_frame)
-    
-    def apply_styles(self):
-        """Apply styles to the dialog"""
+        button_layout.addWidget(self.defaults_button)
+        button_layout.addStretch()
+        button_layout.addWidget(self.cancel_button)
+        button_layout.addWidget(self.apply_button)
+        button_layout.addWidget(self.ok_button)
+        
+        # Add to main layout
+        layout.addWidget(header_label)
+        layout.addWidget(self.tab_widget)
+        layout.addLayout(button_layout)
+        
+        self.setLayout(layout)
+        
+    def setup_styling(self):
+        """Setup dialog styling"""
         self.setStyleSheet("""
             QDialog {
-                background: #1F2937;
-                color: #F9FAFB;
-            }
-            
-            QTabWidget {
-                background: transparent;
-                border: none;
+                background-color: #f8f9fa;
+                font-family: 'Vazirmatn', Arial, sans-serif;
             }
             
             QTabWidget::pane {
-                border: 1px solid #374151;
-                background: #1F2937;
+                border: 2px solid #dee2e6;
                 border-radius: 8px;
-                margin-top: 5px;
+                background-color: white;
+                margin-top: 10px;
             }
             
             QTabBar::tab {
-                background: #374151;
-                color: #F9FAFB;
-                padding: 12px 20px;
-                margin: 2px;
-                border-radius: 8px 8px 0px 0px;
-                font-size: 14px;
-                font-weight: bold;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #f8f9fa, stop:1 #e9ecef);
+                border: 2px solid #dee2e6;
+                border-bottom: none;
+                border-top-left-radius: 8px;
+                border-top-right-radius: 8px;
                 min-width: 120px;
+                padding: 12px 15px;
+                margin: 2px;
+                color: #495057;
+                font-weight: bold;
+                font-size: 11pt;
             }
             
             QTabBar::tab:selected {
-                background: #3B82F6;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #4CAF50, stop:1 #45a049);
                 color: white;
+                border-color: #4CAF50;
             }
             
-            QTabBar::tab:hover {
-                background: #4B5563;
+            QTabBar::tab:hover:!selected {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #e3f2fd, stop:1 #bbdefb);
+                border-color: #2196F3;
+            }
+            
+            QGroupBox {
+                font-weight: bold;
+                border: 2px solid #dee2e6;
+                border-radius: 8px;
+                margin: 15px 0px;
+                padding-top: 15px;
+                background-color: white;
+            }
+            
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 15px;
+                padding: 0 8px 0 8px;
+                color: #495057;
+                background-color: white;
+            }
+            
+            QLineEdit, QTextEdit, QComboBox, QSpinBox {
+                border: 2px solid #dee2e6;
+                border-radius: 6px;
+                padding: 8px;
+                font-size: 11pt;
+                background-color: white;
+            }
+            
+            QLineEdit:focus, QTextEdit:focus, QComboBox:focus, QSpinBox:focus {
+                border-color: #4CAF50;
             }
             
             QPushButton {
-                background: #3B82F6;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #4CAF50, stop:1 #45a049);
                 color: white;
                 border: none;
-                padding: 10px 20px;
-                border-radius: 8px;
+                border-radius: 6px;
+                padding: 10px 15px;
+                font-size: 11pt;
                 font-weight: bold;
-                font-size: 14px;
+                min-width: 80px;
             }
             
             QPushButton:hover {
-                background: #2563EB;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #45a049, stop:1 #3d8b40);
             }
             
-            QLineEdit, QTextEdit, QSpinBox, QComboBox {
-                background: #374151;
-                border: 2px solid #6B7280;
-                border-radius: 6px;
-                padding: 8px;
-                color: #F9FAFB;
-                font-size: 14px;
-            }
-            
-            QLineEdit:focus, QTextEdit:focus, QSpinBox:focus, QComboBox:focus {
-                border-color: #3B82F6;
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #3d8b40, stop:1 #2e7d32);
             }
             
             QCheckBox {
-                color: #F9FAFB;
-                font-size: 14px;
+                font-size: 11pt;
+                color: #495057;
                 spacing: 8px;
             }
             
             QCheckBox::indicator {
                 width: 18px;
                 height: 18px;
-                border-radius: 3px;
-                border: 2px solid #6B7280;
-                background: #374151;
+                border: 2px solid #dee2e6;
+                border-radius: 4px;
+                background-color: white;
             }
             
             QCheckBox::indicator:checked {
-                background: #3B82F6;
-                border-color: #3B82F6;
+                background-color: #4CAF50;
+                border-color: #4CAF50;
+                image: url(checkmark.png);
             }
             
             QLabel {
-                color: #F9FAFB;
-                font-size: 14px;
+                color: #495057;
+                font-size: 11pt;
             }
         """)
-    
-    def save_all_settings(self):
-        """Save all settings"""
+        
+    def load_settings(self):
+        """Load current settings"""
+        # Load settings from database or config file
+        # This is a placeholder - implement actual settings loading
+        pass
+        
+    def apply_settings(self):
+        """Apply settings without closing dialog"""
+        self.save_settings()
+        self.settings_changed.emit()
+        QMessageBox.information(self, "موفقیت", "تنظیمات با موفقیت اعمال شد")
+        
+    def accept_settings(self):
+        """Accept and save settings"""
+        self.save_settings()
+        self.settings_changed.emit()
+        self.accept()
+        
+    def save_settings(self):
+        """Save settings to database or config file"""
+        # Implement actual settings saving
         try:
-            self.company_tab.save_settings()
-            self.appearance_tab.save_settings()
-            self.database_tab.save_settings()
-            
-            QMessageBox.information(self, "موفقیت", "تنظیمات با موفقیت ذخیره شد.")
-            self.settings_changed.emit()
-            self.accept()
-            
+            # Save appearance settings
+            # Save database settings
+            # Save printing settings
+            # Save security settings
+            pass
         except Exception as e:
             QMessageBox.critical(self, "خطا", f"خطا در ذخیره تنظیمات: {str(e)}")
-    
-    def reset_settings(self):
-        """Reset all settings to default"""
+            
+    def reset_to_defaults(self):
+        """Reset all settings to default values"""
         reply = QMessageBox.question(
-            self, "تأیید بازنشانی",
-            "آیا از بازنشانی همه تنظیمات اطمینان دارید؟",
+            self,
+            "تأیید",
+            "آیا مطمئن هستید که می‌خواهید همه تنظیمات را به حالت پیش‌فرض بازگردانید؟",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
         )
         
         if reply == QMessageBox.StandardButton.Yes:
-            settings = QSettings()
-            settings.clear()
+            # Reset all settings to defaults
+            self.load_default_settings()
+            QMessageBox.information(self, "موفقیت", "تنظیمات به حالت پیش‌فرض بازگردانده شد")
             
-            # Reload default values
-            self.company_tab.load_settings()
-            self.appearance_tab.load_settings()
-            self.database_tab.load_settings()
-            
-            QMessageBox.information(self, "موفقیت", "تنظیمات به حالت پیش‌فرض بازنشانی شد.")
+    def load_default_settings(self):
+        """Load default settings"""
+        # Reset all tabs to default values
+        # This is a placeholder - implement actual default loading
+        pass

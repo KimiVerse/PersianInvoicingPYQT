@@ -1,2 +1,13 @@
-PyQt6>=6.6.0
-python-dateutil>=2.8.2
+PyQt6==6.7.0
+PyQt6-Qt6==6.7.0
+PyQt6-sip==13.6.0
+SQLAlchemy==2.0.23
+bcrypt==4.1.2
+jdatetime==5.0.0
+Pillow==10.1.0
+reportlab==4.0.7
+fpdf2==2.7.6
+openpyxl==3.1.2
+pandas==2.1.4
+matplotlib==3.8.2
+numpy==1.26.2

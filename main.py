@@ -1,365 +1,400 @@
-# Fixed Main Application (No SQLAlchemy)
-# File: main.py
+"""
+Persian Invoicing System - Main Application
+Enhanced with login system and improved UI
+"""
 
 import sys
 import os
-import traceback
-from pathlib import Path
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
+                           QHBoxLayout, QLabel, QLineEdit, QPushButton, 
+                           QMessageBox, QFrame, QSizePolicy)
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QFont, QPixmap, QPalette, QColor, QIcon
+from main_window import MainWindow
+from services.database_service import DatabaseService
+import hashlib
 
-def check_dependencies():
-    """Check if all required dependencies are available"""
-    missing_deps = []
+class LoginDialog(QWidget):
+    """Enhanced login dialog with Persian support"""
     
-    try:
-        import PyQt6
-        print("✅ PyQt6 found")
-    except ImportError:
-        missing_deps.append("PyQt6")
+    login_successful = pyqtSignal()
     
-    try:
-        import dateutil
-        print("✅ python-dateutil found")
-    except ImportError:
-        missing_deps.append("python-dateutil")
-    
-    try:
-        import sqlite3
-        print("✅ SQLite3 (built-in) available")
-    except ImportError:
-        missing_deps.append("sqlite3")
-    
-    if missing_deps:
-        print(f"\n❌ Missing dependencies: {', '.join(missing_deps)}")
-        print("Please run: pip install PyQt6 python-dateutil")
-        return False
-    
-    return True
-
-def create_required_directories():
-    """Create necessary directories"""
-    directories = ["logs", "backups", "exports"]
-    for directory in directories:
-        Path(directory).mkdir(exist_ok=True)
-
-def main():
-    """Main application entry point"""
-    print("🚀 Persian Invoicing System")
-    print("=" * 40)
-    
-    # Check dependencies first
-    if not check_dependencies():
-        input("Press Enter to exit...")
-        return 1
-    
-    # Create directories
-    create_required_directories()
-    
-    try:
-        # Import PyQt6 components
-        from PyQt6.QtWidgets import QApplication, QMessageBox
-        from PyQt6.QtCore import Qt
+    def __init__(self):
+        super().__init__()
+        self.db_service = DatabaseService()
+        self.is_first_run = self.check_first_run()
+        self.setup_ui()
+        self.setup_styling()
         
-        # Create application
-        app = QApplication(sys.argv)
-        app.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+    def check_first_run(self):
+        """Check if this is the first run (no users exist)"""
+        # This is a simplified check - you might want to implement a more robust method
+        return not os.path.exists('invoicing.db') or os.path.getsize('invoicing.db') < 1024
         
-        # Try to import and initialize database
-        print("🔄 Initializing database...")
+    def setup_ui(self):
+        """Setup the user interface"""
+        self.setWindowTitle("ورود به سیستم مدیریت فاکتور فروش")
+        self.setFixedSize(400, 500)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
+        
+        # Main layout
+        main_layout = QVBoxLayout()
+        main_layout.setSpacing(20)
+        main_layout.setContentsMargins(40, 40, 40, 40)
+        
+        # Header section
+        header_frame = QFrame()
+        header_layout = QVBoxLayout(header_frame)
+        
+        # Logo/Title
+        title_label = QLabel("سیستم مدیریت فاکتور فروش")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_label.setFont(QFont("Vazirmatn", 18, QFont.Weight.Bold))
+        title_label.setStyleSheet("color: #ffffff; margin-bottom: 10px;")
+        
+        subtitle_label = QLabel("نسخه پیشرفته با قابلیت مدیریت کامل")
+        subtitle_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        subtitle_label.setFont(QFont("Vazirmatn", 10))
+        subtitle_label.setStyleSheet("color: #cccccc; margin-bottom: 20px;")
+        
+        header_layout.addWidget(title_label)
+        header_layout.addWidget(subtitle_label)
+        
+        # Form section
+        form_frame = QFrame()
+        form_layout = QVBoxLayout(form_frame)
+        form_layout.setSpacing(15)
+        
+        # Mode label
+        if self.is_first_run:
+            mode_label = QLabel("🔐 تنظیم اولیه - ایجاد حساب کاربری")
+            mode_label.setStyleSheet("color: #4CAF50; font-weight: bold; margin-bottom: 10px;")
+        else:
+            mode_label = QLabel("🔑 ورود به سیستم")
+            mode_label.setStyleSheet("color: #2196F3; font-weight: bold; margin-bottom: 10px;")
+        
+        mode_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        form_layout.addWidget(mode_label)
+        
+        # Username field
+        username_label = QLabel("نام کاربری:")
+        username_label.setFont(QFont("Vazirmatn", 10))
+        self.username_edit = QLineEdit()
+        self.username_edit.setPlaceholderText("نام کاربری خود را وارد کنید")
+        self.username_edit.setFont(QFont("Vazirmatn", 11))
+        
+        # Password field
+        password_label = QLabel("رمز عبور:")
+        password_label.setFont(QFont("Vazirmatn", 10))
+        self.password_edit = QLineEdit()
+        self.password_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password_edit.setPlaceholderText("رمز عبور خود را وارد کنید")
+        self.password_edit.setFont(QFont("Vazirmatn", 11))
+        
+        # Confirm password (only for first run)
+        self.confirm_password_label = QLabel("تکرار رمز عبور:")
+        self.confirm_password_label.setFont(QFont("Vazirmatn", 10))
+        self.confirm_password_edit = QLineEdit()
+        self.confirm_password_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.confirm_password_edit.setPlaceholderText("رمز عبور را مجدداً وارد کنید")
+        self.confirm_password_edit.setFont(QFont("Vazirmatn", 11))
+        
+        # Add fields to form
+        form_layout.addWidget(username_label)
+        form_layout.addWidget(self.username_edit)
+        form_layout.addWidget(password_label)
+        form_layout.addWidget(self.password_edit)
+        
+        if self.is_first_run:
+            form_layout.addWidget(self.confirm_password_label)
+            form_layout.addWidget(self.confirm_password_edit)
+        else:
+            self.confirm_password_label.hide()
+            self.confirm_password_edit.hide()
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        
+        self.login_button = QPushButton("ورود" if not self.is_first_run else "ایجاد حساب")
+        self.login_button.setFont(QFont("Vazirmatn", 11, QFont.Weight.Bold))
+        self.login_button.clicked.connect(self.handle_login)
+        
+        self.exit_button = QPushButton("خروج")
+        self.exit_button.setFont(QFont("Vazirmatn", 11))
+        self.exit_button.clicked.connect(self.close)
+        
+        button_layout.addWidget(self.exit_button)
+        button_layout.addWidget(self.login_button)
+        
+        # Add sections to main layout
+        main_layout.addWidget(header_frame)
+        main_layout.addStretch()
+        main_layout.addWidget(form_frame)
+        main_layout.addStretch()
+        main_layout.addLayout(button_layout)
+        
+        self.setLayout(main_layout)
+        
+        # Connect Enter key to login
+        self.password_edit.returnPressed.connect(self.handle_login)
+        if self.is_first_run:
+            self.confirm_password_edit.returnPressed.connect(self.handle_login)
+        
+    def setup_styling(self):
+        """Setup modern dark theme styling"""
+        self.setStyleSheet("""
+            QWidget {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #1e3c72, stop:1 #2a5298);
+                color: #ffffff;
+                font-family: 'Vazirmatn', Arial, sans-serif;
+            }
+            
+            QLineEdit {
+                background-color: rgba(255, 255, 255, 0.1);
+                border: 2px solid rgba(255, 255, 255, 0.2);
+                border-radius: 8px;
+                padding: 12px 15px;
+                color: #ffffff;
+                font-size: 11pt;
+                margin: 5px 0px;
+            }
+            
+            QLineEdit:focus {
+                border-color: #4CAF50;
+                background-color: rgba(255, 255, 255, 0.15);
+            }
+            
+            QLineEdit::placeholder {
+                color: rgba(255, 255, 255, 0.6);
+            }
+            
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #4CAF50, stop:1 #45a049);
+                border: none;
+                border-radius: 8px;
+                padding: 12px 24px;
+                color: white;
+                font-weight: bold;
+                font-size: 11pt;
+                min-width: 100px;
+            }
+            
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #45a049, stop:1 #3d8b40);
+            }
+            
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #3d8b40, stop:1 #2e7d32);
+            }
+            
+            QPushButton#exit_button {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #f44336, stop:1 #d32f2f);
+            }
+            
+            QPushButton#exit_button:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #d32f2f, stop:1 #c62828);
+            }
+            
+            QLabel {
+                color: #ffffff;
+                margin: 5px 0px;
+            }
+            
+            QFrame {
+                background: transparent;
+            }
+        """)
+        
+        # Set object names for specific styling
+        self.exit_button.setObjectName("exit_button")
+        
+    def handle_login(self):
+        """Handle login/registration process"""
+        username = self.username_edit.text().strip()
+        password = self.password_edit.text()
+        
+        # Validation
+        if not username or not password:
+            self.show_message("خطا", "لطفاً نام کاربری و رمز عبور را وارد کنید", QMessageBox.Icon.Warning)
+            return
+        
+        if len(username) < 3:
+            self.show_message("خطا", "نام کاربری باید حداقل ۳ کاراکتر باشد", QMessageBox.Icon.Warning)
+            return
+            
+        if len(password) < 4:
+            self.show_message("خطا", "رمز عبور باید حداقل ۴ کاراکتر باشد", QMessageBox.Icon.Warning)
+            return
+        
+        if self.is_first_run:
+            # Registration mode
+            confirm_password = self.confirm_password_edit.text()
+            
+            if password != confirm_password:
+                self.show_message("خطا", "رمز عبور و تکرار آن یکسان نیستند", QMessageBox.Icon.Warning)
+                return
+            
+            success, message = self.db_service.create_user(username, password)
+            if success:
+                self.show_message("موفقیت", "حساب کاربری با موفقیت ایجاد شد", QMessageBox.Icon.Information)
+                self.is_first_run = False
+                self.update_ui_for_login_mode()
+            else:
+                self.show_message("خطا", message, QMessageBox.Icon.Critical)
+        else:
+            # Login mode
+            if self.db_service.authenticate_user(username, password):
+                self.login_successful.emit()
+                self.close()
+            else:
+                self.show_message("خطا", "نام کاربری یا رمز عبور اشتباه است", QMessageBox.Icon.Critical)
+                self.password_edit.clear()
+                self.password_edit.setFocus()
+    
+    def update_ui_for_login_mode(self):
+        """Update UI from registration to login mode"""
+        self.confirm_password_label.hide()
+        self.confirm_password_edit.hide()
+        self.login_button.setText("ورود")
+        
+        # Update mode label
+        mode_label = self.findChild(QLabel)
+        if mode_label:
+            mode_label.setText("🔑 ورود به سیستم")
+            mode_label.setStyleSheet("color: #2196F3; font-weight: bold; margin-bottom: 10px;")
+        
+        # Clear fields
+        self.username_edit.clear()
+        self.password_edit.clear()
+        self.username_edit.setFocus()
+    
+    def show_message(self, title, message, icon=QMessageBox.Icon.Information):
+        """Show message box with Persian styling"""
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle(title)
+        msg_box.setText(message)
+        msg_box.setIcon(icon)
+        
+        # Apply dark theme to message box
+        msg_box.setStyleSheet("""
+            QMessageBox {
+                background-color: #2b2b2b;
+                color: #ffffff;
+                font-family: 'Vazirmatn';
+            }
+            QMessageBox QPushButton {
+                background-color: #4CAF50;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+                color: white;
+                font-weight: bold;
+                min-width: 60px;
+            }
+            QMessageBox QPushButton:hover {
+                background-color: #45a049;
+            }
+        """)
+        
+        msg_box.exec()
+    
+    def closeEvent(self, event):
+        """Handle close event"""
+        if not self.is_first_run:
+            event.accept()
+        else:
+            reply = QMessageBox.question(
+                self, 
+                'تأیید خروج',
+                'آیا مطمئن هستید که می‌خواهید خروج کنید؟\nحساب کاربری ایجاد نشده است.',
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            
+            if reply == QMessageBox.StandardButton.Yes:
+                event.accept()
+            else:
+                event.ignore()
+
+class InvoiceApplication(QApplication):
+    """Main application class"""
+    
+    def __init__(self, argv):
+        super().__init__(argv)
+        self.setup_application()
+        self.login_dialog = None
+        self.main_window = None
+        
+    def setup_application(self):
+        """Setup application properties"""
+        self.setApplicationName("Persian Invoicing System")
+        self.setApplicationVersion("2.0")
+        self.setOrganizationName("KimiVerse")
+        
+        # Set application icon if available
+        if os.path.exists("assets/icon.png"):
+            self.setWindowIcon(QIcon("assets/icon.png"))
+        
+        # Apply global stylesheet
+        self.setStyleSheet("""
+            * {
+                font-family: 'Vazirmatn', Arial, sans-serif;
+            }
+        """)
+    
+    def start(self):
+        """Start the application with login"""
+        self.login_dialog = LoginDialog()
+        self.login_dialog.login_successful.connect(self.show_main_window)
+        self.login_dialog.show()
+        
+        # Center the login dialog
+        self.center_widget(self.login_dialog)
+        
+    def show_main_window(self):
+        """Show main window after successful login"""
         try:
-            from database.models import create_database, test_database_connection
+            self.main_window = MainWindow()
+            self.main_window.show()
             
-            if not create_database():
-                raise Exception("Failed to create database")
-            
-            if not test_database_connection():
-                raise Exception("Database connection test failed")
-            
-            print("✅ Database initialized successfully")
+            # Center the main window
+            self.center_widget(self.main_window)
             
         except Exception as e:
-            error_msg = f"Database initialization failed: {str(e)}"
-            print(f"❌ {error_msg}")
-            QMessageBox.critical(None, "Database Error", error_msg)
-            return 1
-        
-        # Try to import and create main window
-        print("🔄 Loading main application...")
-        try:
-            from main_window import MainWindow
-            
-            # Create and show main window
-            window = MainWindow()
-            window.show()
-            
-            print("✅ Application started successfully!")
-            print("📱 Main window is now open")
-            
-            # Start the application event loop
-            return app.exec()
-            
-        except ImportError:
-            # Fallback to basic window if main_window.py doesn't exist
-            print("⚠️  main_window.py not found, creating basic interface...")
-            from updated_basic_window import create_basic_window
-            
-            window = create_basic_window()
-            window.show()
-            
-            print("✅ Basic interface started successfully!")
-            print("📱 Basic window is now open")
-            
-            return app.exec()
-            
-    except Exception as e:
-        error_msg = f"Application failed to start: {str(e)}"
-        print(f"❌ {error_msg}")
-        print("\nFull error details:")
-        traceback.print_exc()
-        
-        try:
-            from PyQt6.QtWidgets import QApplication, QMessageBox
-            if QApplication.instance() is None:
-                app = QApplication([])
-            QMessageBox.critical(None, "Application Error", error_msg)
-        except:
-            pass
-        
-        input("\nPress Enter to exit...")
-        return 1
+            QMessageBox.critical(
+                None,
+                "خطا",
+                f"خطا در بارگذاری برنامه اصلی:\n{str(e)}"
+            )
+            self.quit()
+    
+    def center_widget(self, widget):
+        """Center widget on screen"""
+        screen = self.primaryScreen().geometry()
+        widget_rect = widget.frameGeometry()
+        center_point = screen.center()
+        widget_rect.moveCenter(center_point)
+        widget.move(widget_rect.topLeft())
+
+def main():
+    """Main function"""
+    # Ensure required directories exist
+    os.makedirs('logs', exist_ok=True)
+    os.makedirs('exports', exist_ok=True)
+    os.makedirs('backups', exist_ok=True)
+    os.makedirs('assets', exist_ok=True)
+    
+    # Create and start application
+    app = InvoiceApplication(sys.argv)
+    app.start()
+    
+    sys.exit(app.exec())
 
 if __name__ == "__main__":
-    sys.exit(main())
-
-# Also create basic_window.py (in case updated_basic_window.py import fails)
-# File: basic_window.py
-
-def create_basic_window():
-    """Create a basic window for testing"""
-    from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, 
-                                QLabel, QPushButton, QMessageBox)
-    from PyQt6.QtCore import Qt
-    
-    class BasicWindow(QMainWindow):
-        def __init__(self):
-            super().__init__()
-            self.setWindowTitle("Persian Invoicing System - Working!")
-            self.setGeometry(100, 100, 800, 600)
-            self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-            
-            # Create central widget
-            central_widget = QWidget()
-            self.setCentralWidget(central_widget)
-            
-            # Create layout
-            layout = QVBoxLayout(central_widget)
-            layout.setSpacing(20)
-            layout.setContentsMargins(50, 50, 50, 50)
-            
-            # Title
-            title = QLabel("🎉 سیستم مدیریت فاکتور فروش")
-            title.setStyleSheet("""
-                QLabel {
-                    font-size: 28px;
-                    font-weight: bold;
-                    color: #2563EB;
-                    padding: 25px;
-                    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                        stop:0 #EBF4FF, stop:1 #DBEAFE);
-                    border-radius: 15px;
-                    border: 3px solid #3B82F6;
-                }
-            """)
-            title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            
-            # Success status
-            status = QLabel("✅ برنامه با موفقیت اجرا شد!")
-            status.setStyleSheet("""
-                QLabel {
-                    font-size: 18px;
-                    color: #059669;
-                    padding: 20px;
-                    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                        stop:0 #ECFDF5, stop:1 #D1FAE5);
-                    border-radius: 10px;
-                    border: 2px solid #10B981;
-                    font-weight: bold;
-                }
-            """)
-            status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            
-            # Features info
-            features = QLabel("""
-🎯 ویژگی‌های سیستم:
-
-📊 داشبورد با آمار لحظه‌ای
-📦 مدیریت کامل محصولات  
-🧾 صدور فاکتور حرفه‌ای
-💾 پایگاه داده SQLite مستقل
-🌙 ظاهر مدرن تیره
-🔄 سازگاری کامل با Python 3.13
-
-همه چیز آماده است! 🚀
-            """)
-            features.setStyleSheet("""
-                QLabel {
-                    font-size: 16px;
-                    color: #374151;
-                    padding: 25px;
-                    background: white;
-                    border-radius: 10px;
-                    border: 1px solid #D1D5DB;
-                    line-height: 1.8;
-                }
-            """)
-            
-            # Test database button
-            test_btn = QPushButton("🧪 تست پایگاه داده")
-            test_btn.setStyleSheet("""
-                QPushButton {
-                    font-size: 18px;
-                    font-weight: bold;
-                    color: white;
-                    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                        stop:0 #3B82F6, stop:1 #1D4ED8);
-                    padding: 18px 35px;
-                    border: none;
-                    border-radius: 10px;
-                    margin: 10px;
-                }
-                QPushButton:hover {
-                    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                        stop:0 #2563EB, stop:1 #1E40AF);
-                }
-                QPushButton:pressed {
-                    background: #1D4ED8;
-                }
-            """)
-            test_btn.clicked.connect(self.test_database)
-            
-            # Open full app button (if available)
-            full_app_btn = QPushButton("🚀 باز کردن برنامه کامل")
-            full_app_btn.setStyleSheet("""
-                QPushButton {
-                    font-size: 20px;
-                    font-weight: bold;
-                    color: white;
-                    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                        stop:0 #10B981, stop:1 #047857);
-                    padding: 20px 40px;
-                    border: none;
-                    border-radius: 12px;
-                    margin: 15px;
-                }
-                QPushButton:hover {
-                    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                        stop:0 #059669, stop:1 #065F46);
-                }
-            """)
-            full_app_btn.clicked.connect(self.open_full_app)
-            
-            # Add widgets to layout
-            layout.addWidget(title)
-            layout.addWidget(status)
-            layout.addWidget(features)
-            layout.addWidget(test_btn)
-            layout.addWidget(full_app_btn)
-            layout.addStretch()
-            
-            # Set window style
-            self.setStyleSheet("""
-                QMainWindow {
-                    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                        stop:0 #F8FAFC, stop:1 #F1F5F9);
-                }
-            """)
-        
-        def test_database(self):
-            """Test database operations"""
-            try:
-                from database.models import test_database_connection, db_manager, Product
-                from decimal import Decimal
-                import random
-                
-                if test_database_connection():
-                    # Test adding a sample product
-                    test_code = f"TEST{random.randint(100, 999)}"
-                    test_product = Product(
-                        product_code=test_code,
-                        product_name="محصول تستی",
-                        purchase_price=Decimal("10000"),
-                        sale_price=Decimal("15000"),
-                        stock_quantity=10,
-                        unit="عدد"
-                    )
-                    
-                    if db_manager.add_product(test_product):
-                        product_count = db_manager.count_products()
-                        
-                        # Clean up
-                        products = db_manager.get_products()
-                        test_product_from_db = next(p for p in products if p.product_code == test_code)
-                        db_manager.delete_product(test_product_from_db.id)
-                        
-                        QMessageBox.information(
-                            self, 
-                            "تست پایگاه داده", 
-                            f"✅ تست پایگاه داده موفق!\n\n"
-                            f"📊 عملیات انجام شده:\n"
-                            f"   • ایجاد محصول تستی: {test_code}\n"
-                            f"   • خواندن از پایگاه داده\n"
-                            f"   • حذف محصول تستی\n\n"
-                            f"📦 تعداد محصولات: {product_count}\n"
-                            f"💾 نوع پایگاه داده: SQLite مستقیم\n"
-                            f"🐍 سازگاری Python 3.13: بله"
-                        )
-                    else:
-                        QMessageBox.warning(self, "تست پایگاه داده", "❌ خطا در ایجاد محصول تستی")
-                else:
-                    QMessageBox.warning(self, "تست پایگاه داده", "❌ اتصال به پایگاه داده ناموفق!")
-                    
-            except Exception as e:
-                QMessageBox.critical(
-                    self, 
-                    "خطای تست", 
-                    f"❌ خطا در تست پایگاه داده:\n{str(e)}"
-                )
-        
-        def open_full_app(self):
-            """Try to open the full application"""
-            try:
-                # Close this window
-                self.close()
-                
-                # Try to import and open main window
-                from main_window import MainWindow
-                
-                self.main_window = MainWindow()
-                self.main_window.show()
-                
-                QMessageBox.information(
-                    None,
-                    "برنامه کامل", 
-                    "✅ برنامه کامل با موفقیت باز شد!"
-                )
-                
-            except ImportError:
-                QMessageBox.warning(
-                    self,
-                    "برنامه کامل",
-                    "⚠️ فایل main_window.py یافت نشد!\n\n"
-                    "برای استفاده از رابط کامل، مطمئن شوید که\n"
-                    "فایل main_window.py در همین پوشه موجود است."
-                )
-                # Reopen this window
-                self.show()
-                
-            except Exception as e:
-                QMessageBox.critical(
-                    self,
-                    "خطای برنامه",
-                    f"❌ خطا در باز کردن برنامه کامل:\n{str(e)}"
-                )
-                # Reopen this window
-                self.show()
-    
-    return BasicWindow()
+    main()

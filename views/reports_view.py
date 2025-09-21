@@ -1,103 +1,30 @@
-# Advanced Reports View with Charts and Export
-# File: views/reports_view.py
+"""
+Reports View for Persian Invoicing System
+Enhanced reporting with charts and export functionality
+"""
 
+import os
+from datetime import datetime, timedelta
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
-                            QLabel, QFrame, QPushButton, QDateEdit, QTableWidget,
-                            QTableWidgetItem, QHeaderView, QMessageBox, QComboBox,
-                            QSpinBox, QSplitter, QScrollArea, QTextEdit,
-                            QProgressBar, QFileDialog, QTabWidget, QGroupBox)
-from PyQt6.QtCore import Qt, QDate, QThread, pyqtSignal, QTimer
-from PyQt6.QtGui import QFont, QPainter, QPen, QBrush, QColor
-from database.models import get_db_session, Product, Invoice, InvoiceItem
-from services.report_service import ReportService
-from datetime import datetime, date, timedelta
-from decimal import Decimal
-import csv
-import json
+                           QLabel, QPushButton, QTableWidget, QTableWidgetItem,
+                           QHeaderView, QGroupBox, QDateEdit, QComboBox,
+                           QTextEdit, QSplitter, QFrame, QMessageBox,
+                           QFileDialog, QProgressBar)
+from PyQt6.QtCore import Qt, QDate, pyqtSignal, QThread
+from PyQt6.QtGui import QFont
+from services.database_service import DatabaseService
+import jdatetime
 
-# Simple chart widget (since we don't want external dependencies)
-class SimpleBarChart(QWidget):
-    """Simple bar chart widget"""
+class ReportGeneratorThread(QThread):
+    """Thread for generating reports without blocking UI"""
     
-    def __init__(self, data=None, title="Chart"):
-        super().__init__()
-        self.data = data or []
-        self.title = title
-        self.setMinimumHeight(300)
-        self.setStyleSheet("background: #374151; border-radius: 8px;")
-    
-    def set_data(self, data, title="Chart"):
-        """Set chart data"""
-        self.data = data
-        self.title = title
-        self.update()
-    
-    def paintEvent(self, event):
-        """Paint the chart"""
-        if not self.data:
-            return
-        
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
-        # Background
-        painter.fillRect(self.rect(), QColor("#374151"))
-        
-        # Chart area
-        margin = 50
-        chart_rect = self.rect().adjusted(margin, margin, -margin, -margin)
-        
-        # Title
-        painter.setPen(QColor("#F9FAFB"))
-        painter.setFont(QFont("Arial", 14, QFont.Weight.Bold))
-        title_rect = self.rect().adjusted(0, 10, 0, -self.rect().height() + 40)
-        painter.drawText(title_rect, Qt.AlignmentFlag.AlignCenter, self.title)
-        
-        if not self.data:
-            return
-        
-        # Calculate max value
-        max_value = max(item['value'] for item in self.data)
-        if max_value == 0:
-            return
-        
-        # Draw bars
-        bar_width = chart_rect.width() // len(self.data) - 10
-        colors = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#F97316"]
-        
-        for i, item in enumerate(self.data):
-            color = QColor(colors[i % len(colors)])
-            brush = QBrush(color)
-            painter.setBrush(brush)
-            painter.setPen(QPen(color))
-            
-            bar_height = int((item['value'] / max_value) * chart_rect.height() * 0.8)
-            x = chart_rect.left() + i * (bar_width + 10)
-            y = chart_rect.bottom() - bar_height
-            
-            # Draw bar
-            painter.drawRect(x, y, bar_width, bar_height)
-            
-            # Draw label
-            painter.setPen(QColor("#F9FAFB"))
-            painter.setFont(QFont("Arial", 10))
-            label_rect = self.rect().adjusted(x, chart_rect.bottom() + 5, 
-                                           x + bar_width - chart_rect.width(), 
-                                           chart_rect.bottom() + 25)
-            painter.drawText(x, chart_rect.bottom() + 20, item['label'][:10] + "...")
-            
-            # Draw value
-            painter.drawText(x, y - 5, f"{item['value']:,.0f}")
-
-class ReportWorker(QThread):
-    """Background worker for generating reports"""
-    
-    progress_updated = pyqtSignal(int)
     report_ready = pyqtSignal(dict)
+    progress_updated = pyqtSignal(int)
     error_occurred = pyqtSignal(str)
     
-    def __init__(self, report_type, start_date, end_date):
+    def __init__(self, db_service, report_type, start_date, end_date):
         super().__init__()
+        self.db_service = db_service
         self.report_type = report_type
         self.start_date = start_date
         self.end_date = end_date
@@ -108,11 +35,11 @@ class ReportWorker(QThread):
             self.progress_updated.emit(10)
             
             if self.report_type == "sales":
-                report_data = ReportService.generate_sales_report(
-                    self.start_date, self.end_date
-                )
+                report_data = self.generate_sales_report()
             elif self.report_type == "products":
-                report_data = ReportService.generate_product_report()
+                report_data = self.generate_products_report()
+            elif self.report_type == "customers":
+                report_data = self.generate_customers_report()
             else:
                 report_data = {}
             
@@ -121,677 +48,683 @@ class ReportWorker(QThread):
             
         except Exception as e:
             self.error_occurred.emit(str(e))
+    
+    def generate_sales_report(self):
+        """Generate sales report"""
+        invoices = self.db_service.get_invoices()
+        
+        # Filter by date range
+        filtered_invoices = []
+        for invoice in invoices:
+            if self.start_date <= invoice.issue_date.date() <= self.end_date:
+                filtered_invoices.append(invoice)
+        
+        self.progress_updated.emit(50)
+        
+        # Calculate statistics
+        total_invoices = len(filtered_invoices)
+        total_revenue = sum(inv.final_amount for inv in filtered_invoices)
+        total_discount = sum(inv.discount_amount for inv in filtered_invoices)
+        
+        # Group by date
+        daily_sales = {}
+        for invoice in filtered_invoices:
+            date_key = invoice.issue_date.date()
+            if date_key not in daily_sales:
+                daily_sales[date_key] = {'count': 0, 'revenue': 0}
+            daily_sales[date_key]['count'] += 1
+            daily_sales[date_key]['revenue'] += invoice.final_amount
+        
+        self.progress_updated.emit(80)
+        
+        return {
+            'type': 'sales',
+            'summary': {
+                'total_invoices': total_invoices,
+                'total_revenue': total_revenue,
+                'total_discount': total_discount,
+                'average_invoice': total_revenue // total_invoices if total_invoices > 0 else 0
+            },
+            'daily_data': daily_sales,
+            'invoices': filtered_invoices
+        }
+    
+    def generate_products_report(self):
+        """Generate products report"""
+        products = self.db_service.get_products()
+        
+        self.progress_updated.emit(50)
+        
+        # Calculate statistics
+        total_products = len(products)
+        total_stock_value = sum(p.stock_quantity * p.sale_price for p in products)
+        low_stock_products = [p for p in products if p.stock_quantity <= 5]
+        zero_stock_products = [p for p in products if p.stock_quantity == 0]
+        
+        self.progress_updated.emit(80)
+        
+        return {
+            'type': 'products',
+            'summary': {
+                'total_products': total_products,
+                'total_stock_value': total_stock_value,
+                'low_stock_count': len(low_stock_products),
+                'zero_stock_count': len(zero_stock_products)
+            },
+            'products': products,
+            'low_stock_products': low_stock_products,
+            'zero_stock_products': zero_stock_products
+        }
+    
+    def generate_customers_report(self):
+        """Generate customers report"""
+        invoices = self.db_service.get_invoices()
+        
+        # Filter by date range
+        filtered_invoices = []
+        for invoice in invoices:
+            if self.start_date <= invoice.issue_date.date() <= self.end_date:
+                filtered_invoices.append(invoice)
+        
+        self.progress_updated.emit(50)
+        
+        # Group by customer
+        customers_data = {}
+        for invoice in filtered_invoices:
+            customer = invoice.customer_name
+            if customer not in customers_data:
+                customers_data[customer] = {
+                    'invoice_count': 0,
+                    'total_amount': 0,
+                    'phone': invoice.customer_phone,
+                    'last_purchase': invoice.issue_date
+                }
+            
+            customers_data[customer]['invoice_count'] += 1
+            customers_data[customer]['total_amount'] += invoice.final_amount
+            
+            if invoice.issue_date > customers_data[customer]['last_purchase']:
+                customers_data[customer]['last_purchase'] = invoice.issue_date
+        
+        self.progress_updated.emit(80)
+        
+        return {
+            'type': 'customers',
+            'summary': {
+                'total_customers': len(customers_data),
+                'total_invoices': len(filtered_invoices),
+                'total_revenue': sum(inv.final_amount for inv in filtered_invoices)
+            },
+            'customers_data': customers_data
+        }
 
-class SalesReportTab(QWidget):
-    """Sales report tab"""
+class ReportsView(QWidget):
+    """Enhanced reports view with comprehensive reporting"""
     
     def __init__(self):
         super().__init__()
-        self.report_data = {}
+        self.db_service = DatabaseService()
+        self.report_thread = None
+        self.current_report_data = None
         self.setup_ui()
-    
+        self.setup_styling()
+        
     def setup_ui(self):
-        """Setup sales report UI"""
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(20)
+        """Setup the reports user interface"""
+        main_layout = QVBoxLayout()
+        main_layout.setSpacing(20)
+        main_layout.setContentsMargins(20, 20, 20, 20)
         
-        # Date range selection
-        date_frame = QFrame()
-        date_frame.setStyleSheet("""
-            QFrame {
-                background: #374151;
-                border: 1px solid #6B7280;
-                border-radius: 12px;
-                padding: 20px;
-            }
-        """)
+        # Header
+        header_label = QLabel("گزارشات و آمار")
+        header_label.setFont(QFont("Vazirmatn", 16, QFont.Weight.Bold))
+        header_label.setStyleSheet("color: #2c3e50; margin-bottom: 15px;")
+        header_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
-        date_layout = QHBoxLayout(date_frame)
+        # Controls section
+        controls_group = QGroupBox("تنظیمات گزارش")
+        controls_layout = QGridLayout(controls_group)
         
-        start_label = QLabel("از تاریخ:")
-        start_label.setStyleSheet("font-weight: bold; background: transparent;")
-        self.start_date = QDateEdit()
-        self.start_date.setDate(QDate.currentDate().addDays(-30))
-        self.start_date.setCalendarPopup(True)
+        # Report type
+        type_label = QLabel("نوع گزارش:")
+        self.report_type_combo = QComboBox()
+        self.report_type_combo.addItems([
+            "گزارش فروش",
+            "گزارش کالاها", 
+            "گزارش مشتریان"
+        ])
+        self.report_type_combo.setFont(QFont("Vazirmatn", 11))
         
-        end_label = QLabel("تا تاریخ:")
-        end_label.setStyleSheet("font-weight: bold; background: transparent;")
-        self.end_date = QDateEdit()
-        self.end_date.setDate(QDate.currentDate())
-        self.end_date.setCalendarPopup(True)
+        # Date range
+        start_date_label = QLabel("از تاریخ:")
+        self.start_date_edit = QDateEdit()
+        self.start_date_edit.setDate(QDate.currentDate().addDays(-30))
+        self.start_date_edit.setCalendarPopup(True)
+        self.start_date_edit.setFont(QFont("Vazirmatn", 11))
         
-        generate_button = QPushButton("📊 تولید گزارش")
-        generate_button.setFixedHeight(40)
-        generate_button.setStyleSheet("""
-            QPushButton {
-                background: #10B981;
-                color: white;
-                font-weight: bold;
-                border-radius: 8px;
-                padding: 0px 20px;
-            }
-            QPushButton:hover {
-                background: #059669;
-            }
-        """)
-        generate_button.clicked.connect(self.generate_report)
+        end_date_label = QLabel("تا تاریخ:")
+        self.end_date_edit = QDateEdit()
+        self.end_date_edit.setDate(QDate.currentDate())
+        self.end_date_edit.setCalendarPopup(True)
+        self.end_date_edit.setFont(QFont("Vazirmatn", 11))
         
-        export_button = QPushButton("📁 خروجی CSV")
-        export_button.setFixedHeight(40)
-        export_button.clicked.connect(self.export_to_csv)
+        # Buttons
+        self.generate_button = QPushButton("تولید گزارش")
+        self.generate_button.setFont(QFont("Vazirmatn", 11, QFont.Weight.Bold))
+        self.generate_button.clicked.connect(self.generate_report)
         
-        date_layout.addWidget(start_label)
-        date_layout.addWidget(self.start_date)
-        date_layout.addWidget(end_label)
-        date_layout.addWidget(self.end_date)
-        date_layout.addStretch()
-        date_layout.addWidget(generate_button)
-        date_layout.addWidget(export_button)
+        self.export_button = QPushButton("خروجی اکسل")
+        self.export_button.setFont(QFont("Vazirmatn", 11, QFont.Weight.Bold))
+        self.export_button.clicked.connect(self.export_report)
+        self.export_button.setEnabled(False)
         
         # Progress bar
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
         
-        # Splitter for chart and table
-        splitter = QSplitter(Qt.Orientation.Vertical)
+        # Add to controls layout
+        controls_layout.addWidget(type_label, 0, 0)
+        controls_layout.addWidget(self.report_type_combo, 0, 1)
+        controls_layout.addWidget(start_date_label, 0, 2)
+        controls_layout.addWidget(self.start_date_edit, 0, 3)
+        controls_layout.addWidget(end_date_label, 0, 4)
+        controls_layout.addWidget(self.end_date_edit, 0, 5)
+        controls_layout.addWidget(self.generate_button, 1, 0, 1, 2)
+        controls_layout.addWidget(self.export_button, 1, 2, 1, 2)
+        controls_layout.addWidget(self.progress_bar, 1, 4, 1, 2)
         
-        # Summary cards and chart
-        summary_frame = QFrame()
-        summary_frame.setStyleSheet("""
-            QFrame {
-                background: #374151;
-                border: 1px solid #6B7280;
-                border-radius: 12px;
+        # Results section
+        results_splitter = QSplitter(Qt.Orientation.Horizontal)
+        
+        # Summary panel
+        summary_group = QGroupBox("خلاصه آمار")
+        summary_layout = QVBoxLayout(summary_group)
+        
+        self.summary_text = QTextEdit()
+        self.summary_text.setMaximumHeight(200)
+        self.summary_text.setFont(QFont("Vazirmatn", 11))
+        self.summary_text.setReadOnly(True)
+        summary_layout.addWidget(self.summary_text)
+        
+        # Data table
+        table_group = QGroupBox("جزئیات گزارش")
+        table_layout = QVBoxLayout(table_group)
+        
+        self.report_table = QTableWidget()
+        self.report_table.setAlternatingRowColors(True)
+        self.report_table.setFont(QFont("Vazirmatn", 10))
+        table_layout.addWidget(self.report_table)
+        
+        # Add to splitter
+        results_splitter.addWidget(summary_group)
+        results_splitter.addWidget(table_group)
+        results_splitter.setStretchFactor(0, 1)
+        results_splitter.setStretchFactor(1, 2)
+        
+        # Add to main layout
+        main_layout.addWidget(header_label)
+        main_layout.addWidget(controls_group)
+        main_layout.addWidget(results_splitter)
+        
+        self.setLayout(main_layout)
+        
+    def setup_styling(self):
+        """Setup modern styling"""
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #f8f9fa;
+                font-family: 'Vazirmatn', Arial, sans-serif;
             }
-        """)
-        
-        summary_layout = QVBoxLayout(summary_frame)
-        summary_layout.setContentsMargins(20, 20, 20, 20)
-        
-        # Summary statistics
-        stats_layout = QHBoxLayout()
-        
-        self.total_sales_label = self.create_stat_card("💰 مجموع فروش", "0 ریال", "#10B981")
-        self.total_invoices_label = self.create_stat_card("🧾 تعداد فاکتور", "0", "#3B82F6")
-        self.average_sale_label = self.create_stat_card("📊 میانگین فروش", "0 ریال", "#F59E0B")
-        self.total_discount_label = self.create_stat_card("🏷️ کل تخفیف", "0 ریال", "#EF4444")
-        
-        stats_layout.addWidget(self.total_sales_label)
-        stats_layout.addWidget(self.total_invoices_label)
-        stats_layout.addWidget(self.average_sale_label)
-        stats_layout.addWidget(self.total_discount_label)
-        
-        # Chart
-        self.sales_chart = SimpleBarChart(title="نمودار فروش روزانه")
-        
-        summary_layout.addLayout(stats_layout)
-        summary_layout.addWidget(self.sales_chart, 1)
-        
-        # Detailed table
-        table_frame = QFrame()
-        table_frame.setStyleSheet("""
-            QFrame {
-                background: #374151;
-                border: 1px solid #6B7280;
-                border-radius: 12px;
-            }
-        """)
-        
-        table_layout = QVBoxLayout(table_frame)
-        table_layout.setContentsMargins(0, 0, 0, 0)
-        
-        table_header = QLabel("📋 جزئیات فاکتورها")
-        table_header.setStyleSheet("""
-            background: #4B5563;
-            color: #F9FAFB;
-            font-size: 16px;
-            font-weight: bold;
-            padding: 15px 20px;
-            border-radius: 12px 12px 0px 0px;
-        """)
-        
-        self.sales_table = QTableWidget()
-        self.setup_sales_table()
-        
-        table_layout.addWidget(table_header)
-        table_layout.addWidget(self.sales_table, 1)
-        
-        splitter.addWidget(summary_frame)
-        splitter.addWidget(table_frame)
-        splitter.setSizes([400, 300])
-        
-        layout.addWidget(date_frame)
-        layout.addWidget(self.progress_bar)
-        layout.addWidget(splitter, 1)
-    
-    def create_stat_card(self, title, value, color):
-        """Create a statistics card"""
-        card = QFrame()
-        card.setFixedHeight(100)
-        card.setStyleSheet(f"""
-            QFrame {{
-                background: #4B5563;
-                border: 2px solid {color};
-                border-radius: 8px;
-                margin: 5px;
-            }}
-        """)
-        
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(15, 10, 15, 10)
-        
-        title_label = QLabel(title)
-        title_label.setStyleSheet("""
-            color: #D1D5DB;
-            font-size: 12px;
-            font-weight: bold;
-            background: transparent;
-        """)
-        
-        value_label = QLabel(value)
-        value_label.setStyleSheet(f"""
-            color: {color};
-            font-size: 18px;
-            font-weight: bold;
-            background: transparent;
-        """)
-        value_label.setObjectName("stat_value")
-        
-        layout.addWidget(title_label)
-        layout.addWidget(value_label)
-        
-        return card
-    
-    def setup_sales_table(self):
-        """Setup sales table"""
-        self.sales_table.setColumnCount(5)
-        self.sales_table.setHorizontalHeaderLabels([
-            "شماره فاکتور", "نام مشتری", "تاریخ", "مجموع", "مبلغ نهایی"
-        ])
-        
-        # Set table properties
-        self.sales_table.setAlternatingRowColors(True)
-        self.sales_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.sales_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.sales_table.verticalHeader().setVisible(False)
-        
-        # Set column widths
-        header = self.sales_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        
-        self.sales_table.setStyleSheet("""
-            QTableWidget {
-                background: transparent;
-                border: none;
-                gridline-color: #6B7280;
-                font-size: 14px;
-            }
-            QTableWidget::item {
-                padding: 8px;
-                border-bottom: 1px solid #6B7280;
-            }
-            QTableWidget::item:selected {
-                background: #3B82F6;
-                color: white;
-            }
-            QHeaderView::section {
-                background: #4B5563;
-                color: #F9FAFB;
-                padding: 10px;
-                border: none;
-                border-bottom: 2px solid #6B7280;
+            
+            QGroupBox {
                 font-weight: bold;
-                font-size: 14px;
+                border: 2px solid #dee2e6;
+                border-radius: 12px;
+                margin: 10px 0px;
+                padding-top: 15px;
+                background-color: white;
+            }
+            
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 15px;
+                padding: 0 8px 0 8px;
+                color: #495057;
+                background-color: white;
+            }
+            
+            QComboBox, QDateEdit {
+                border: 2px solid #dee2e6;
+                border-radius: 6px;
+                padding: 8px;
+                font-size: 11pt;
+                background-color: white;
+                min-height: 20px;
+            }
+            
+            QComboBox:focus, QDateEdit:focus {
+                border-color: #4CAF50;
+            }
+            
+            QComboBox::drop-down {
+                border: none;
+                width: 20px;
+            }
+            
+            QComboBox::down-arrow {
+                image: url(down-arrow.png);
+                width: 12px;
+                height: 12px;
+            }
+            
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #4CAF50, stop:1 #45a049);
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 12px 20px;
+                font-size: 11pt;
+                font-weight: bold;
+                min-width: 100px;
+            }
+            
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #45a049, stop:1 #3d8b40);
+            }
+            
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #3d8b40, stop:1 #2e7d32);
+            }
+            
+            QPushButton:disabled {
+                background: #cccccc;
+                color: #666666;
+            }
+            
+            QTableWidget {
+                border: 1px solid #dee2e6;
+                border-radius: 8px;
+                background-color: white;
+                gridline-color: #f1f3f4;
+                font-size: 10pt;
+            }
+            
+            QTableWidget::item {
+                padding: 10px 8px;
+                border: none;
+            }
+            
+            QTableWidget::item:selected {
+                background-color: #e3f2fd;
+                color: #1976d2;
+            }
+            
+            QTableWidget::item:alternate {
+                background-color: #f8f9fa;
+            }
+            
+            QHeaderView::section {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #f8f9fa, stop:1 #e9ecef);
+                padding: 12px 8px;
+                border: 1px solid #dee2e6;
+                font-weight: bold;
+                color: #495057;
+            }
+            
+            QTextEdit {
+                border: 1px solid #dee2e6;
+                border-radius: 6px;
+                background-color: white;
+                padding: 10px;
+            }
+            
+            QProgressBar {
+                border: 2px solid #dee2e6;
+                border-radius: 5px;
+                background-color: #f8f9fa;
+                text-align: center;
+            }
+            
+            QProgressBar::chunk {
+                background-color: #4CAF50;
+                border-radius: 3px;
             }
         """)
     
     def generate_report(self):
-        """Generate sales report"""
-        start = self.start_date.date().toPython()
-        end = self.end_date.date().toPython()
+        """Generate selected report"""
+        if self.report_thread and self.report_thread.isRunning():
+            return
         
+        # Get parameters
+        report_type_map = {
+            "گزارش فروش": "sales",
+            "گزارش کالاها": "products",
+            "گزارش مشتریان": "customers"
+        }
+        
+        report_type = report_type_map[self.report_type_combo.currentText()]
+        start_date = self.start_date_edit.date().toPython()
+        end_date = self.end_date_edit.date().toPython()
+        
+        # Validate date range
+        if start_date > end_date:
+            QMessageBox.warning(self, "خطا", "تاریخ شروع نمی‌تواند از تاریخ پایان بزرگتر باشد")
+            return
+        
+        # Show progress
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
+        self.generate_button.setEnabled(False)
         
-        # Create worker thread
-        self.worker = ReportWorker("sales", start, end)
-        self.worker.progress_updated.connect(self.progress_bar.setValue)
-        self.worker.report_ready.connect(self.display_sales_report)
-        self.worker.error_occurred.connect(self.handle_error)
-        self.worker.start()
+        # Start background thread
+        self.report_thread = ReportGeneratorThread(
+            self.db_service, report_type, start_date, end_date
+        )
+        self.report_thread.report_ready.connect(self.on_report_ready)
+        self.report_thread.progress_updated.connect(self.progress_bar.setValue)
+        self.report_thread.error_occurred.connect(self.on_report_error)
+        self.report_thread.start()
+    
+    def on_report_ready(self, report_data):
+        """Handle completed report"""
+        self.current_report_data = report_data
+        self.display_report(report_data)
+        
+        # Hide progress and enable buttons
+        self.progress_bar.setVisible(False)
+        self.generate_button.setEnabled(True)
+        self.export_button.setEnabled(True)
+    
+    def on_report_error(self, error_message):
+        """Handle report generation error"""
+        QMessageBox.critical(self, "خطا", f"خطا در تولید گزارش: {error_message}")
+        
+        # Hide progress and enable buttons
+        self.progress_bar.setVisible(False)
+        self.generate_button.setEnabled(True)
+        self.export_button.setEnabled(False)
+    
+    def display_report(self, report_data):
+        """Display report data in UI"""
+        report_type = report_data['type']
+        
+        if report_type == 'sales':
+            self.display_sales_report(report_data)
+        elif report_type == 'products':
+            self.display_products_report(report_data)
+        elif report_type == 'customers':
+            self.display_customers_report(report_data)
     
     def display_sales_report(self, report_data):
-        """Display the generated report"""
-        self.report_data = report_data
-        self.progress_bar.setVisible(False)
+        """Display sales report"""
+        summary = report_data['summary']
         
-        # Update summary cards
-        total_sales = report_data.get('total_sales', 0)
-        total_invoices = report_data.get('total_invoices', 0)
-        average_sale = report_data.get('average_sale', 0)
-        total_discount = report_data.get('total_discount', 0)
-        
-        # Find value labels and update them
-        cards = [self.total_sales_label, self.total_invoices_label, 
-                self.average_sale_label, self.total_discount_label]
-        values = [
-            f"{total_sales:,.0f} ریال",
-            f"{total_invoices}",
-            f"{average_sale:,.0f} ریال",
-            f"{total_discount:,.0f} ریال"
-        ]
-        
-        for card, value in zip(cards, values):
-            value_label = card.findChild(QLabel, "stat_value")
-            if value_label:
-                value_label.setText(value)
-        
-        # Update chart - group by date
-        chart_data = self.prepare_chart_data(report_data.get('invoices', []))
-        self.sales_chart.set_data(chart_data, "نمودار فروش روزانه")
+        # Update summary
+        summary_text = f"""
+📊 خلاصه گزارش فروش
+
+🧾 تعداد کل فاکتورها: {summary['total_invoices']:,}
+💰 مجموع درآمد: {summary['total_revenue']:,} تومان
+🎯 مجموع تخفیفات: {summary['total_discount']:,} تومان
+📈 میانگین فاکتور: {summary['average_invoice']:,} تومان
+
+📅 بازه زمانی: {self.start_date_edit.date().toString('yyyy/MM/dd')} تا {self.end_date_edit.date().toString('yyyy/MM/dd')}
+        """
+        self.summary_text.setText(summary_text.strip())
         
         # Update table
-        self.populate_sales_table(report_data.get('invoices', []))
-    
-    def prepare_chart_data(self, invoices):
-        """Prepare data for chart"""
-        daily_sales = {}
-        
-        for invoice in invoices:
-            date_str = invoice.issue_date.strftime("%m/%d")
-            if date_str not in daily_sales:
-                daily_sales[date_str] = 0
-            daily_sales[date_str] += float(invoice.final_price)
-        
-        # Convert to chart format
-        chart_data = []
-        for date_str, amount in sorted(daily_sales.items()):
-            chart_data.append({
-                'label': date_str,
-                'value': amount
-            })
-        
-        return chart_data[:7]  # Show last 7 days
-    
-    def populate_sales_table(self, invoices):
-        """Populate sales table"""
-        self.sales_table.setRowCount(len(invoices))
+        invoices = report_data['invoices']
+        self.report_table.setColumnCount(5)
+        self.report_table.setHorizontalHeaderLabels([
+            "شماره فاکتور", "نام مشتری", "تاریخ", "مبلغ نهایی", "تخفیف"
+        ])
+        self.report_table.setRowCount(len(invoices))
         
         for row, invoice in enumerate(invoices):
-            self.sales_table.setItem(row, 0, QTableWidgetItem(invoice.invoice_number))
-            self.sales_table.setItem(row, 1, QTableWidgetItem(invoice.customer_name))
-            self.sales_table.setItem(row, 2, QTableWidgetItem(invoice.issue_date.strftime("%Y/%m/%d")))
-            self.sales_table.setItem(row, 3, QTableWidgetItem(f"{invoice.total_price:,.0f} ریال"))
-            self.sales_table.setItem(row, 4, QTableWidgetItem(f"{invoice.final_price:,.0f} ریال"))
-    
-    def export_to_csv(self):
-        """Export report to CSV"""
-        if not self.report_data:
-            QMessageBox.warning(self, "خطا", "ابتدا گزارش را تولید کنید.")
-            return
+            # Convert to Persian date
+            jdate = jdatetime.datetime.fromgregorian(datetime=invoice.issue_date)
+            persian_date = jdate.strftime('%Y/%m/%d')
+            
+            items = [
+                invoice.invoice_number,
+                invoice.customer_name,
+                persian_date,
+                f"{invoice.final_amount:,} تومان",
+                f"{invoice.discount_amount:,} تومان"
+            ]
+            
+            for col, item in enumerate(items):
+                table_item = QTableWidgetItem(str(item))
+                table_item.setFlags(table_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                self.report_table.setItem(row, col, table_item)
         
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, "ذخیره گزارش", "sales_report.csv", "CSV Files (*.csv)"
-        )
-        
-        if file_path:
-            try:
-                with open(file_path, 'w', newline='', encoding='utf-8-sig') as csvfile:
-                    writer = csv.writer(csvfile)
-                    
-                    # Header
-                    writer.writerow(["شماره فاکتور", "نام مشتری", "تاریخ", "مجموع", "تخفیف", "مبلغ نهایی"])
-                    
-                    # Data
-                    for invoice in self.report_data.get('invoices', []):
-                        writer.writerow([
-                            invoice.invoice_number,
-                            invoice.customer_name,
-                            invoice.issue_date.strftime("%Y/%m/%d"),
-                            float(invoice.total_price),
-                            float(invoice.discount),
-                            float(invoice.final_price)
-                        ])
-                
-                QMessageBox.information(self, "موفقیت", f"گزارش در {file_path} ذخیره شد.")
-                
-            except Exception as e:
-                QMessageBox.critical(self, "خطا", f"خطا در ذخیره فایل: {str(e)}")
+        # Resize columns
+        header = self.report_table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
     
-    def handle_error(self, error_msg):
-        """Handle worker error"""
-        self.progress_bar.setVisible(False)
-        QMessageBox.critical(self, "خطا", f"خطا در تولید گزارش: {error_msg}")
+    def display_products_report(self, report_data):
+        """Display products report"""
+        summary = report_data['summary']
+        
+        # Update summary
+        summary_text = f"""
+📦 خلاصه گزارش کالاها
 
-class ProductReportTab(QWidget):
-    """Product inventory report tab"""
-    
-    def __init__(self):
-        super().__init__()
-        self.report_data = {}
-        self.setup_ui()
-        self.generate_report()
-    
-    def setup_ui(self):
-        """Setup product report UI"""
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(20)
-        
-        # Control buttons
-        controls_frame = QFrame()
-        controls_frame.setStyleSheet("""
-            QFrame {
-                background: #374151;
-                border: 1px solid #6B7280;
-                border-radius: 12px;
-                padding: 15px;
-            }
-        """)
-        
-        controls_layout = QHBoxLayout(controls_frame)
-        
-        refresh_button = QPushButton("🔄 بروزرسانی")
-        refresh_button.clicked.connect(self.generate_report)
-        
-        export_button = QPushButton("📁 خروجی CSV")
-        export_button.clicked.connect(self.export_to_csv)
-        
-        controls_layout.addStretch()
-        controls_layout.addWidget(refresh_button)
-        controls_layout.addWidget(export_button)
-        
-        # Summary cards
-        summary_frame = QFrame()
-        summary_frame.setStyleSheet("""
-            QFrame {
-                background: #374151;
-                border: 1px solid #6B7280;
-                border-radius: 12px;
-                padding: 20px;
-            }
-        """)
-        
-        summary_layout = QHBoxLayout(summary_frame)
-        
-        self.total_products_card = self.create_stat_card("📦 کل محصولات", "0", "#3B82F6")
-        self.out_of_stock_card = self.create_stat_card("❌ ناموجود", "0", "#EF4444")
-        self.low_stock_card = self.create_stat_card("⚠️ موجودی کم", "0", "#F59E0B")
-        self.inventory_value_card = self.create_stat_card("💰 ارزش کل", "0 ریال", "#10B981")
-        
-        summary_layout.addWidget(self.total_products_card)
-        summary_layout.addWidget(self.out_of_stock_card)
-        summary_layout.addWidget(self.low_stock_card)
-        summary_layout.addWidget(self.inventory_value_card)
-        
-        # Products table
-        table_frame = QFrame()
-        table_frame.setStyleSheet("""
-            QFrame {
-                background: #374151;
-                border: 1px solid #6B7280;
-                border-radius: 12px;
-            }
-        """)
-        
-        table_layout = QVBoxLayout(table_frame)
-        table_layout.setContentsMargins(0, 0, 0, 0)
-        
-        table_header = QLabel("📋 جزئیات محصولات")
-        table_header.setStyleSheet("""
-            background: #4B5563;
-            color: #F9FAFB;
-            font-size: 16px;
-            font-weight: bold;
-            padding: 15px 20px;
-            border-radius: 12px 12px 0px 0px;
-        """)
-        
-        self.products_table = QTableWidget()
-        self.setup_products_table()
-        
-        table_layout.addWidget(table_header)
-        table_layout.addWidget(self.products_table, 1)
-        
-        layout.addWidget(controls_frame)
-        layout.addWidget(summary_frame)
-        layout.addWidget(table_frame, 1)
-    
-    def create_stat_card(self, title, value, color):
-        """Create a statistics card"""
-        card = QFrame()
-        card.setFixedHeight(100)
-        card.setStyleSheet(f"""
-            QFrame {{
-                background: #4B5563;
-                border: 2px solid {color};
-                border-radius: 8px;
-                margin: 5px;
-            }}
-        """)
-        
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(15, 10, 15, 10)
-        
-        title_label = QLabel(title)
-        title_label.setStyleSheet("""
-            color: #D1D5DB;
-            font-size: 12px;
-            font-weight: bold;
-            background: transparent;
-        """)
-        
-        value_label = QLabel(value)
-        value_label.setStyleSheet(f"""
-            color: {color};
-            font-size: 18px;
-            font-weight: bold;
-            background: transparent;
-        """)
-        value_label.setObjectName("stat_value")
-        
-        layout.addWidget(title_label)
-        layout.addWidget(value_label)
-        
-        return card
-    
-    def setup_products_table(self):
-        """Setup products table"""
-        self.products_table.setColumnCount(6)
-        self.products_table.setHorizontalHeaderLabels([
-            "کد کالا", "نام کالا", "موجودی", "واحد", "قیمت خرید", "ارزش کل"
-        ])
-        
-        # Set table properties
-        self.products_table.setAlternatingRowColors(True)
-        self.products_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.products_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.products_table.verticalHeader().setVisible(False)
-        
-        # Set column widths
-        header = self.products_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
-        
-        self.products_table.setStyleSheet("""
-            QTableWidget {
-                background: transparent;
-                border: none;
-                gridline-color: #6B7280;
-                font-size: 14px;
-            }
-            QTableWidget::item {
-                padding: 8px;
-                border-bottom: 1px solid #6B7280;
-            }
-            QTableWidget::item:selected {
-                background: #3B82F6;
-                color: white;
-            }
-            QHeaderView::section {
-                background: #4B5563;
-                color: #F9FAFB;
-                padding: 10px;
-                border: none;
-                border-bottom: 2px solid #6B7280;
-                font-weight: bold;
-                font-size: 14px;
-            }
-        """)
-    
-    def generate_report(self):
-        """Generate product report"""
-        try:
-            self.report_data = ReportService.generate_product_report()
-            self.display_product_report()
-        except Exception as e:
-            QMessageBox.critical(self, "خطا", f"خطا در تولید گزارش: {str(e)}")
-    
-    def display_product_report(self):
-        """Display product report"""
-        # Update summary cards
-        total_products = self.report_data.get('total_products', 0)
-        out_of_stock = self.report_data.get('out_of_stock', 0)
-        low_stock = self.report_data.get('low_stock', 0)
-        inventory_value = self.report_data.get('total_inventory_value', 0)
-        
-        cards = [self.total_products_card, self.out_of_stock_card, 
-                self.low_stock_card, self.inventory_value_card]
-        values = [
-            f"{total_products}",
-            f"{out_of_stock}",
-            f"{low_stock}",
-            f"{inventory_value:,.0f} ریال"
-        ]
-        
-        for card, value in zip(cards, values):
-            value_label = card.findChild(QLabel, "stat_value")
-            if value_label:
-                value_label.setText(value)
+📋 تعداد کل کالاها: {summary['total_products']:,}
+💎 ارزش کل موجودی: {summary['total_stock_value']:,} تومان
+⚠️ کالاهای کم‌موجود: {summary['low_stock_count']:,}
+❌ کالاهای ناموجود: {summary['zero_stock_count']:,}
+        """
+        self.summary_text.setText(summary_text.strip())
         
         # Update table
-        self.populate_products_table(self.report_data.get('products', []))
-    
-    def populate_products_table(self, products):
-        """Populate products table"""
-        self.products_table.setRowCount(len(products))
+        products = report_data['products']
+        self.report_table.setColumnCount(5)
+        self.report_table.setHorizontalHeaderLabels([
+            "نام کالا", "قیمت خرید", "قیمت فروش", "موجودی", "ارزش موجودی"
+        ])
+        self.report_table.setRowCount(len(products))
         
         for row, product in enumerate(products):
-            # Color code based on stock level
-            stock_color = "#F9FAFB"  # Default
-            if product.stock_quantity == 0:
-                stock_color = "#EF4444"  # Red for out of stock
-            elif product.stock_quantity <= 5:
-                stock_color = "#F59E0B"  # Orange for low stock
+            stock_value = product.stock_quantity * product.sale_price
             
-            self.products_table.setItem(row, 0, QTableWidgetItem(product.product_code))
-            self.products_table.setItem(row, 1, QTableWidgetItem(product.product_name))
+            items = [
+                product.name,
+                f"{product.purchase_price:,} تومان",
+                f"{product.sale_price:,} تومان",
+                f"{product.stock_quantity:,}",
+                f"{stock_value:,} تومان"
+            ]
             
-            stock_item = QTableWidgetItem(str(product.stock_quantity))
-            stock_item.setForeground(QColor(stock_color))
-            self.products_table.setItem(row, 2, stock_item)
-            
-            self.products_table.setItem(row, 3, QTableWidgetItem(product.unit))
-            self.products_table.setItem(row, 4, QTableWidgetItem(f"{product.purchase_price:,.0f} ریال"))
-            
-            total_value = product.stock_quantity * product.purchase_price
-            self.products_table.setItem(row, 5, QTableWidgetItem(f"{total_value:,.0f} ریال"))
+            for col, item in enumerate(items):
+                table_item = QTableWidgetItem(str(item))
+                table_item.setFlags(table_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                
+                # Color code low stock
+                if col == 3 and product.stock_quantity <= 5:
+                    if product.stock_quantity == 0:
+                        table_item.setBackground(QFont().defaultFamily())  # Red
+                    else:
+                        table_item.setBackground(QFont().defaultFamily())  # Orange
+                
+                self.report_table.setItem(row, col, table_item)
+        
+        # Resize columns
+        header = self.report_table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
     
-    def export_to_csv(self):
-        """Export report to CSV"""
-        if not self.report_data:
-            QMessageBox.warning(self, "خطا", "ابتدا گزارش را تولید کنید.")
+    def display_customers_report(self, report_data):
+        """Display customers report"""
+        summary = report_data['summary']
+        
+        # Update summary
+        summary_text = f"""
+👥 خلاصه گزارش مشتریان
+
+👤 تعداد کل مشتریان: {summary['total_customers']:,}
+🧾 تعداد کل فاکتورها: {summary['total_invoices']:,}
+💰 مجموع درآمد: {summary['total_revenue']:,} تومان
+
+📅 بازه زمانی: {self.start_date_edit.date().toString('yyyy/MM/dd')} تا {self.end_date_edit.date().toString('yyyy/MM/dd')}
+        """
+        self.summary_text.setText(summary_text.strip())
+        
+        # Update table
+        customers_data = report_data['customers_data']
+        self.report_table.setColumnCount(5)
+        self.report_table.setHorizontalHeaderLabels([
+            "نام مشتری", "تعداد فاکتور", "مجموع خرید", "شماره تماس", "آخرین خرید"
+        ])
+        self.report_table.setRowCount(len(customers_data))
+        
+        for row, (customer_name, data) in enumerate(customers_data.items()):
+            # Convert to Persian date
+            jdate = jdatetime.datetime.fromgregorian(datetime=data['last_purchase'])
+            persian_date = jdate.strftime('%Y/%m/%d')
+            
+            items = [
+                customer_name,
+                str(data['invoice_count']),
+                f"{data['total_amount']:,} تومان",
+                data['phone'] or "ندارد",
+                persian_date
+            ]
+            
+            for col, item in enumerate(items):
+                table_item = QTableWidgetItem(str(item))
+                table_item.setFlags(table_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                self.report_table.setItem(row, col, table_item)
+        
+        # Resize columns
+        header = self.report_table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+    
+    def export_report(self):
+        """Export report to Excel"""
+        if not self.current_report_data:
+            QMessageBox.warning(self, "خطا", "لطفاً ابتدا گزارشی تولید کنید")
             return
         
+        # Get save path
         file_path, _ = QFileDialog.getSaveFileName(
-            self, "ذخیره گزارش", "product_report.csv", "CSV Files (*.csv)"
+            self,
+            "ذخیره گزارش",
+            f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+            "Excel Files (*.xlsx)"
         )
         
-        if file_path:
-            try:
-                with open(file_path, 'w', newline='', encoding='utf-8-sig') as csvfile:
-                    writer = csv.writer(csvfile)
-                    
-                    # Header
-                    writer.writerow(["کد کالا", "نام کالا", "موجودی", "واحد", "قیمت خرید", "قیمت فروش", "ارزش کل"])
-                    
-                    # Data
-                    for product in self.report_data.get('products', []):
-                        total_value = product.stock_quantity * product.purchase_price
-                        writer.writerow([
-                            product.product_code,
-                            product.product_name,
-                            product.stock_quantity,
-                            product.unit,
-                            float(product.purchase_price),
-                            float(product.sale_price),
-                            float(total_value)
-                        ])
-                
-                QMessageBox.information(self, "موفقیت", f"گزارش در {file_path} ذخیره شد.")
-                
-            except Exception as e:
-                QMessageBox.critical(self, "خطا", f"خطا در ذخیره فایل: {str(e)}")
-
-class ReportsView(QWidget):
-    """Main reports view with multiple report types"""
+        if not file_path:
+            return
+        
+        try:
+            self.save_excel_report(file_path)
+            QMessageBox.information(self, "موفقیت", f"گزارش در مسیر زیر ذخیره شد:\\n{file_path}")
+        except Exception as e:
+            QMessageBox.critical(self, "خطا", f"خطا در ذخیره فایل: {str(e)}")
     
-    def __init__(self):
-        super().__init__()
-        self.setup_ui()
+    def save_excel_report(self, file_path):
+        """Save report to Excel file"""
+        try:
+            import pandas as pd
+            
+            # Create Excel writer
+            with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
+                report_type = self.current_report_data['type']
+                
+                if report_type == 'sales':
+                    self.save_sales_excel(writer)
+                elif report_type == 'products':
+                    self.save_products_excel(writer)
+                elif report_type == 'customers':
+                    self.save_customers_excel(writer)
+                    
+        except ImportError:
+            # Fallback to simple CSV if pandas not available
+            self.save_csv_report(file_path.replace('.xlsx', '.csv'))
     
-    def setup_ui(self):
-        """Setup reports view UI"""
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(0)
+    def save_sales_excel(self, writer):
+        """Save sales report to Excel"""
+        import pandas as pd
         
-        # Tab widget for different report types
-        self.tab_widget = QTabWidget()
-        self.tab_widget.setStyleSheet("""
-            QTabWidget {
-                background: transparent;
-                border: none;
-            }
-            QTabWidget::pane {
-                border: 1px solid #374151;
-                background: #1F2937;
-                border-radius: 12px;
-                margin-top: 5px;
-            }
-            QTabBar::tab {
-                background: #374151;
-                color: #F9FAFB;
-                padding: 12px 20px;
-                margin: 2px;
-                border-radius: 12px 12px 0px 0px;
-                font-size: 15px;
-                font-weight: bold;
-                min-width: 150px;
-            }
-            QTabBar::tab:selected {
-                background: #3B82F6;
-                color: white;
-            }
-            QTabBar::tab:hover {
-                background: #4B5563;
-            }
-        """)
+        invoices = self.current_report_data['invoices']
         
-        # Add report tabs
-        self.sales_report = SalesReportTab()
-        self.product_report = ProductReportTab()
+        # Prepare data
+        data = []
+        for invoice in invoices:
+            jdate = jdatetime.datetime.fromgregorian(datetime=invoice.issue_date)
+            data.append({
+                'شماره فاکتور': invoice.invoice_number,
+                'نام مشتری': invoice.customer_name,
+                'تاریخ': jdate.strftime('%Y/%m/%d'),
+                'مبلغ نهایی': invoice.final_amount,
+                'تخفیف': invoice.discount_amount
+            })
         
-        self.tab_widget.addTab(self.sales_report, "📊 گزارش فروش")
-        self.tab_widget.addTab(self.product_report, "📦 گزارش موجودی")
+        df = pd.DataFrame(data)
+        df.to_excel(writer, sheet_name='گزارش فروش', index=False)
+    
+    def save_products_excel(self, writer):
+        """Save products report to Excel"""
+        import pandas as pd
         
-        layout.addWidget(self.tab_widget)
+        products = self.current_report_data['products']
+        
+        # Prepare data
+        data = []
+        for product in products:
+            data.append({
+                'نام کالا': product.name,
+                'قیمت خرید': product.purchase_price,
+                'قیمت فروش': product.sale_price,
+                'موجودی': product.stock_quantity,
+                'ارزش موجودی': product.stock_quantity * product.sale_price
+            })
+        
+        df = pd.DataFrame(data)
+        df.to_excel(writer, sheet_name='گزارش کالاها', index=False)
+    
+    def save_customers_excel(self, writer):
+        """Save customers report to Excel"""
+        import pandas as pd
+        
+        customers_data = self.current_report_data['customers_data']
+        
+        # Prepare data
+        data = []
+        for customer_name, customer_data in customers_data.items():
+            jdate = jdatetime.datetime.fromgregorian(datetime=customer_data['last_purchase'])
+            data.append({
+                'نام مشتری': customer_name,
+                'تعداد فاکتور': customer_data['invoice_count'],
+                'مجموع خرید': customer_data['total_amount'],
+                'شماره تماس': customer_data['phone'] or '',
+                'آخرین خرید': jdate.strftime('%Y/%m/%d')
+            })
+        
+        df = pd.DataFrame(data)
+        df.to_excel(writer, sheet_name='گزارش مشتریان', index=False)
+    
+    def save_csv_report(self, file_path):
+        """Save report as CSV (fallback)"""
+        # Simple CSV export without pandas
+        import csv
+        
+        with open(file_path, 'w', newline='', encoding='utf-8') as csvfile:
+            if self.current_report_data['type'] == 'sales':
+                writer = csv.writer(csvfile)
+                writer.writerow(['شماره فاکتور', 'نام مشتری', 'تاریخ', 'مبلغ نهایی', 'تخفیف'])
+                
+                for invoice in self.current_report_data['invoices']:
+                    jdate = jdatetime.datetime.fromgregorian(datetime=invoice.issue_date)
+                    writer.writerow([
+                        invoice.invoice_number,
+                        invoice.customer_name,
+                        jdate.strftime('%Y/%m/%d'),
+                        invoice.final_amount,
+                        invoice.discount_amount
+                    ])

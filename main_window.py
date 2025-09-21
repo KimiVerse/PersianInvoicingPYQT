@@ -1,860 +1,513 @@
-# Main Application Window
-# File: main_window.py
+"""
+Main Window for Persian Invoicing System
+Enhanced with modern UI and improved navigation
+"""
 
+import os
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-                            QTabWidget, QLabel, QFrame, QPushButton, QTableWidget,
-                            QTableWidgetItem, QLineEdit, QSpinBox, QDoubleSpinBox,
-                            QComboBox, QDateEdit, QMessageBox, QHeaderView,
-                            QFormLayout, QTextEdit, QSplitter)
-from PyQt6.QtCore import Qt, QDate, QTimer
-from PyQt6.QtGui import QFont
-from database.models import get_db_session, Product, Invoice, InvoiceItem
-from datetime import datetime, date
-from decimal import Decimal
-import random
+                           QTabWidget, QMenuBar, QStatusBar, QLabel, 
+                           QPushButton, QFrame, QMessageBox, QApplication,
+                           QSizePolicy, QToolBar)
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QFont, QIcon, QAction, QPixmap
+from views.dashboard_view import DashboardView
+from views.invoice_view import InvoiceView
+from views.products_view import ProductsView
+from views.reports_view import ReportsView
+from views.settings_dialog import SettingsDialog
+from services.database_service import DatabaseService
+import jdatetime
+from datetime import datetime
 
-class MainWindow(QMainWindow):
+class ModernTabWidget(QTabWidget):
+    """Custom tab widget with modern styling"""
+    
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("سیستم مدیریت فاکتور فروش")
-        self.setGeometry(100, 100, 1400, 850)
-        self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        self.setTabPosition(QTabWidget.TabPosition.West)
+        self.setMovable(False)
+        self.setTabsClosable(False)
         
-        # Apply modern theme
-        self.apply_theme()
-        
-        # Setup UI
-        self.setup_ui()
-        
-        # Show maximized
-        self.showMaximized()
-    
-    def apply_theme(self):
-        """Apply modern Persian theme"""
+        # Custom styling for tabs
         self.setStyleSheet("""
-            QMainWindow {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                    stop:0 #1F2937, stop:1 #111827);
-                color: #F9FAFB;
-            }
-            
-            QWidget {
-                font-family: 'Segoe UI', 'Tahoma', sans-serif;
-                font-size: 14px;
-                color: #F9FAFB;
-                background: transparent;
-            }
-            
-            QPushButton {
-                background: #3B82F6;
-                color: white;
-                border: none;
-                padding: 10px 16px;
-                border-radius: 8px;
-                font-weight: bold;
-                font-size: 14px;
-            }
-            
-            QPushButton:hover {
-                background: #2563EB;
-            }
-            
-            QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QDateEdit {
-                background: #374151;
-                border: 2px solid #6B7280;
-                border-radius: 8px;
-                padding: 8px 12px;
-                color: #F9FAFB;
-                font-size: 14px;
-            }
-            
-            QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus, QDateEdit:focus {
-                border-color: #3B82F6;
-                background: #4B5563;
-            }
-            
-            QTableWidget {
-                background: #374151;
-                alternate-background-color: #4B5563;
-                border: 1px solid #6B7280;
-                border-radius: 12px;
-                gridline-color: #6B7280;
-                color: #F9FAFB;
-                font-size: 14px;
-            }
-            
-            QTableWidget::item {
-                padding: 8px;
-                border: none;
-            }
-            
-            QTableWidget::item:selected {
-                background: #3B82F6;
-                color: white;
-            }
-            
-            QHeaderView::section {
-                background: #4B5563;
-                color: #F9FAFB;
-                padding: 10px;
-                border: 1px solid #6B7280;
-                font-weight: bold;
-                font-size: 14px;
-            }
-            
-            QTabWidget {
-                background: transparent;
-                border: none;
-            }
-            
             QTabWidget::pane {
-                border: 1px solid #374151;
-                background: #1F2937;
-                border-radius: 12px;
-                margin-top: 5px;
+                border: 2px solid #dee2e6;
+                border-radius: 8px;
+                background-color: white;
+                margin-left: 10px;
+            }
+            
+            QTabWidget::tab-bar {
+                alignment: left;
             }
             
             QTabBar::tab {
-                background: #374151;
-                color: #F9FAFB;
-                padding: 12px 20px;
-                margin: 2px;
-                border-radius: 12px 12px 0px 0px;
-                font-size: 15px;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #f8f9fa, stop:1 #e9ecef);
+                border: 2px solid #dee2e6;
+                border-bottom: none;
+                border-top-left-radius: 8px;
+                border-bottom-left-radius: 8px;
+                min-width: 120px;
+                min-height: 60px;
+                padding: 10px;
+                margin: 2px 0px;
+                color: #495057;
                 font-weight: bold;
-                min-width: 150px;
+                font-size: 11pt;
             }
             
             QTabBar::tab:selected {
-                background: #3B82F6;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #4CAF50, stop:1 #45a049);
                 color: white;
+                border-color: #4CAF50;
             }
             
-            QTabBar::tab:hover {
-                background: #4B5563;
-            }
-            
-            QFrame {
-                background: #374151;
-                border: 1px solid #6B7280;
-                border-radius: 12px;
-            }
-            
-            QLabel {
-                color: #F9FAFB;
-                background: transparent;
+            QTabBar::tab:hover:!selected {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #e3f2fd, stop:1 #bbdefb);
+                border-color: #2196F3;
             }
         """)
+
+class StatusBarWidget(QStatusBar):
+    """Enhanced status bar with system information"""
     
+    def __init__(self):
+        super().__init__()
+        self.setup_ui()
+        self.setup_timer()
+        
     def setup_ui(self):
-        """Setup the main user interface"""
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
+        """Setup status bar UI"""
+        # System info
+        self.system_label = QLabel("سیستم مدیریت فاکتور فروش")
+        self.system_label.setFont(QFont("Vazirmatn", 9))
         
-        layout = QVBoxLayout(central_widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        # Date and time
+        self.datetime_label = QLabel()
+        self.datetime_label.setFont(QFont("Vazirmatn", 9))
         
-        # Header
-        header = self.create_header()
-        layout.addWidget(header)
+        # Connection status
+        self.db_status_label = QLabel("💾 دیتابیس: متصل")
+        self.db_status_label.setFont(QFont("Vazirmatn", 9))
+        self.db_status_label.setStyleSheet("color: #27ae60;")
         
-        # Tab widget
-        self.tab_widget = QTabWidget()
+        # Add widgets
+        self.addWidget(self.system_label)
+        self.addPermanentWidget(self.db_status_label)
+        self.addPermanentWidget(self.datetime_label)
         
-        # Create tabs
-        self.dashboard_tab = self.create_dashboard_tab()
-        self.products_tab = self.create_products_tab()
-        self.invoice_tab = self.create_invoice_tab()
-        
-        self.tab_widget.addTab(self.dashboard_tab, "📈 داشبورد")
-        self.tab_widget.addTab(self.products_tab, "📦 مدیریت کالاها")
-        self.tab_widget.addTab(self.invoice_tab, "🧾 صدور فاکتور")
-        
-        layout.addWidget(self.tab_widget, 1)
-        
-        # Load initial data
-        self.load_dashboard_data()
-        self.load_products_data()
-    
-    def create_header(self):
-        """Create application header"""
-        header_frame = QFrame()
-        header_frame.setFixedHeight(80)
-        header_frame.setStyleSheet("""
-            QFrame {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                    stop:0 #3B82F6, stop:1 #10B981);
-                border-radius: 0px;
+        # Styling
+        self.setStyleSheet("""
+            QStatusBar {
+                background-color: #f8f9fa;
+                border-top: 1px solid #dee2e6;
+                padding: 5px;
+            }
+            QStatusBar::item {
                 border: none;
             }
         """)
         
-        layout = QHBoxLayout(header_frame)
-        layout.setContentsMargins(25, 20, 25, 20)
+    def setup_timer(self):
+        """Setup timer for updating date/time"""
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update_datetime)
+        self.timer.start(1000)  # Update every second
+        self.update_datetime()
         
-        # Title
+    def update_datetime(self):
+        """Update date and time display"""
+        now = datetime.now()
+        jdate = jdatetime.datetime.fromgregorian(datetime=now)
+        
+        persian_date = jdate.strftime('%Y/%m/%d')
+        time_str = now.strftime('%H:%M:%S')
+        
+        self.datetime_label.setText(f"📅 {persian_date} | 🕐 {time_str}")
+
+class MainWindow(QMainWindow):
+    """Enhanced main window with modern design"""
+    
+    def __init__(self):
+        super().__init__()
+        self.db_service = DatabaseService()
+        self.setup_ui()
+        self.setup_styling()
+        self.setup_connections()
+        
+    def setup_ui(self):
+        """Setup the main user interface"""
+        self.setWindowTitle("سیستم مدیریت فاکتور فروش - نسخه پیشرفته")
+        self.setGeometry(100, 100, 1400, 900)
+        
+        # Set window icon if available
+        if os.path.exists("assets/icon.png"):
+            self.setWindowIcon(QIcon("assets/icon.png"))
+        
+        # Create central widget
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        
+        # Main layout
+        main_layout = QVBoxLayout(central_widget)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(10)
+        
+        # Header section
+        header_widget = self.create_header()
+        main_layout.addWidget(header_widget)
+        
+        # Create tab widget
+        self.tab_widget = ModernTabWidget()
+        
+        # Create views
+        self.dashboard_view = DashboardView()
+        self.invoice_view = InvoiceView()
+        self.products_view = ProductsView()
+        self.reports_view = ReportsView()
+        
+        # Add tabs with icons
+        self.tab_widget.addTab(self.dashboard_view, "📊 داشبورد")
+        self.tab_widget.addTab(self.invoice_view, "🧾 صدور فاکتور")
+        self.tab_widget.addTab(self.products_view, "📦 مدیریت کالاها")
+        self.tab_widget.addTab(self.reports_view, "📈 گزارشات")
+        
+        main_layout.addWidget(self.tab_widget)
+        
+        # Create menu bar
+        self.create_menu_bar()
+        
+        # Create status bar
+        self.status_bar = StatusBarWidget()
+        self.setStatusBar(self.status_bar)
+        
+        # Set initial tab
+        self.tab_widget.setCurrentIndex(0)
+        
+    def create_header(self):
+        """Create application header"""
+        header_frame = QFrame()
+        header_frame.setFrameStyle(QFrame.Shape.Box)
+        header_layout = QHBoxLayout(header_frame)
+        header_layout.setContentsMargins(20, 15, 20, 15)
+        
+        # Logo/Title section
         title_layout = QVBoxLayout()
-        title_label = QLabel("سیستم مدیریت فاکتور فروش")
-        title_label.setStyleSheet("""
-            color: white;
-            font-size: 24px;
-            font-weight: bold;
-            background: transparent;
+        
+        app_title = QLabel("سیستم مدیریت فاکتور فروش")
+        app_title.setFont(QFont("Vazirmatn", 16, QFont.Weight.Bold))
+        app_title.setStyleSheet("color: #2c3e50;")
+        
+        app_subtitle = QLabel("نسخه پیشرفته با قابلیت‌های کامل مدیریت")
+        app_subtitle.setFont(QFont("Vazirmatn", 10))
+        app_subtitle.setStyleSheet("color: #7f8c8d;")
+        
+        title_layout.addWidget(app_title)
+        title_layout.addWidget(app_subtitle)
+        
+        # Quick action buttons
+        actions_layout = QHBoxLayout()
+        
+        self.quick_invoice_btn = QPushButton("🧾 فاکتور سریع")
+        self.quick_product_btn = QPushButton("📦 کالای جدید")
+        self.settings_btn = QPushButton("⚙️ تنظیمات")
+        self.help_btn = QPushButton("❓ راهنما")
+        
+        for btn in [self.quick_invoice_btn, self.quick_product_btn, self.settings_btn, self.help_btn]:
+            btn.setFont(QFont("Vazirmatn", 10, QFont.Weight.Bold))
+            btn.setMinimumHeight(35)
+            btn.setMaximumWidth(120)
+            actions_layout.addWidget(btn)
+        
+        # Add to header layout
+        header_layout.addLayout(title_layout)
+        header_layout.addStretch()
+        header_layout.addLayout(actions_layout)
+        
+        # Header styling
+        header_frame.setStyleSheet("""
+            QFrame {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #667eea, stop:1 #764ba2);
+                border: none;
+                border-radius: 12px;
+                margin-bottom: 10px;
+            }
+            QLabel {
+                color: white;
+            }
+            QPushButton {
+                background: rgba(255, 255, 255, 0.2);
+                color: white;
+                border: 2px solid rgba(255, 255, 255, 0.3);
+                border-radius: 6px;
+                padding: 8px 12px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.3);
+                border-color: white;
+            }
+            QPushButton:pressed {
+                background: rgba(255, 255, 255, 0.1);
+            }
         """)
-        
-        subtitle_label = QLabel("نسخه پیشرفته با قابلیت مدیریت کامل")
-        subtitle_label.setStyleSheet("""
-            color: #E5E7EB;
-            font-size: 14px;
-            background: transparent;
-        """)
-        
-        title_layout.addWidget(title_label)
-        title_layout.addWidget(subtitle_label)
-        
-        layout.addLayout(title_layout)
-        layout.addStretch()
         
         return header_frame
-    
-    def create_dashboard_tab(self):
-        """Create dashboard tab"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(20)
         
-        # Stats cards
-        stats_layout = QHBoxLayout()
+    def create_menu_bar(self):
+        """Create application menu bar"""
+        menubar = self.menuBar()
+        menubar.setFont(QFont("Vazirmatn", 10))
         
-        self.today_invoices_card = self.create_stat_card("تعداد فاکتورهای امروز", "0", "#3B82F6")
-        self.today_sales_card = self.create_stat_card("فروش کل امروز", "0 ریال", "#10B981")
-        self.total_products_card = self.create_stat_card("تعداد کل کالاها", "0", "#F59E0B")
+        # File menu
+        file_menu = menubar.addMenu('فایل')
         
-        stats_layout.addWidget(self.today_invoices_card)
-        stats_layout.addWidget(self.today_sales_card)
-        stats_layout.addWidget(self.total_products_card)
+        new_invoice_action = QAction('🧾 فاکتور جدید', self)
+        new_invoice_action.setShortcut('Ctrl+N')
+        new_invoice_action.triggered.connect(lambda: self.tab_widget.setCurrentIndex(1))
+        file_menu.addAction(new_invoice_action)
         
-        # Recent invoices table
-        recent_frame = QFrame()
-        recent_layout = QVBoxLayout(recent_frame)
-        recent_layout.setContentsMargins(20, 20, 20, 20)
+        new_product_action = QAction('📦 کالای جدید', self)
+        new_product_action.setShortcut('Ctrl+P')
+        new_product_action.triggered.connect(lambda: self.tab_widget.setCurrentIndex(2))
+        file_menu.addAction(new_product_action)
         
-        recent_title = QLabel("📋 فاکتورهای اخیر")
-        recent_title.setStyleSheet("font-size: 18px; font-weight: bold; background: transparent;")
+        file_menu.addSeparator()
         
-        self.recent_table = QTableWidget()
-        self.recent_table.setColumnCount(4)
-        self.recent_table.setHorizontalHeaderLabels(["شماره فاکتور", "نام مشتری", "تاریخ", "مبلغ نهایی"])
+        backup_action = QAction('💾 پشتیبان‌گیری', self)
+        backup_action.triggered.connect(self.create_backup)
+        file_menu.addAction(backup_action)
         
-        recent_layout.addWidget(recent_title)
-        recent_layout.addWidget(self.recent_table)
+        file_menu.addSeparator()
         
-        layout.addLayout(stats_layout)
-        layout.addWidget(recent_frame, 1)
+        exit_action = QAction('❌ خروج', self)
+        exit_action.setShortcut('Ctrl+Q')
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
         
-        return widget
-    
-    def create_stat_card(self, title, value, color):
-        """Create a statistics card"""
-        card = QFrame()
-        card.setFixedHeight(120)
-        card.setStyleSheet(f"""
-            QFrame {{
-                background: #374151;
-                border: 2px solid {color};
-                border-radius: 15px;
-                margin: 8px;
-            }}
+        # View menu
+        view_menu = menubar.addMenu('نمایش')
+        
+        dashboard_action = QAction('📊 داشبورد', self)
+        dashboard_action.triggered.connect(lambda: self.tab_widget.setCurrentIndex(0))
+        view_menu.addAction(dashboard_action)
+        
+        reports_action = QAction('📈 گزارشات', self)
+        reports_action.triggered.connect(lambda: self.tab_widget.setCurrentIndex(3))
+        view_menu.addAction(reports_action)
+        
+        # Tools menu
+        tools_menu = menubar.addMenu('ابزارها')
+        
+        settings_action = QAction('⚙️ تنظیمات', self)
+        settings_action.triggered.connect(self.show_settings)
+        tools_menu.addAction(settings_action)
+        
+        refresh_action = QAction('🔄 به‌روزرسانی', self)
+        refresh_action.setShortcut('F5')
+        refresh_action.triggered.connect(self.refresh_all_views)
+        tools_menu.addAction(refresh_action)
+        
+        # Help menu
+        help_menu = menubar.addMenu('راهنما')
+        
+        about_action = QAction('ℹ️ درباره نرم‌افزار', self)
+        about_action.triggered.connect(self.show_about)
+        help_menu.addAction(about_action)
+        
+        help_action = QAction('❓ راهنمای استفاده', self)
+        help_action.triggered.connect(self.show_help)
+        help_menu.addAction(help_action)
+        
+        # Menu styling
+        menubar.setStyleSheet("""
+            QMenuBar {
+                background-color: #f8f9fa;
+                border-bottom: 1px solid #dee2e6;
+                padding: 5px;
+            }
+            QMenuBar::item {
+                background: transparent;
+                padding: 8px 12px;
+                border-radius: 4px;
+                margin: 2px;
+            }
+            QMenuBar::item:selected {
+                background-color: #e3f2fd;
+                color: #1976d2;
+            }
+            QMenu {
+                background-color: white;
+                border: 1px solid #dee2e6;
+                border-radius: 6px;
+                padding: 5px;
+            }
+            QMenu::item {
+                padding: 8px 20px;
+                border-radius: 4px;
+            }
+            QMenu::item:selected {
+                background-color: #e3f2fd;
+                color: #1976d2;
+            }
         """)
         
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(20, 15, 20, 15)
-        layout.setSpacing(10)
-        
-        title_label = QLabel(title)
-        title_label.setStyleSheet("""
-            color: #D1D5DB;
-            font-size: 14px;
-            font-weight: bold;
-            background: transparent;
+    def setup_styling(self):
+        """Setup global window styling"""
+        self.setStyleSheet("""
+            QMainWindow {
+                background-color: #f8f9fa;
+                font-family: 'Vazirmatn', Arial, sans-serif;
+            }
         """)
-        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
-        value_label = QLabel(value)
-        value_label.setStyleSheet(f"""
-            color: {color};
-            font-size: 24px;
-            font-weight: bold;
-            background: transparent;
-        """)
-        value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        value_label.setObjectName("stat_value")
+    def setup_connections(self):
+        """Setup signal connections between components"""
+        # Connect quick action buttons
+        self.quick_invoice_btn.clicked.connect(lambda: self.tab_widget.setCurrentIndex(1))
+        self.quick_product_btn.clicked.connect(lambda: self.tab_widget.setCurrentIndex(2))
+        self.settings_btn.clicked.connect(self.show_settings)
+        self.help_btn.clicked.connect(self.show_help)
         
-        layout.addWidget(title_label)
-        layout.addWidget(value_label)
+        # Connect dashboard quick actions
+        dashboard_buttons = self.dashboard_view.get_quick_action_buttons()
+        dashboard_buttons['new_invoice'].clicked.connect(lambda: self.tab_widget.setCurrentIndex(1))
+        dashboard_buttons['new_product'].clicked.connect(lambda: self.tab_widget.setCurrentIndex(2))
+        dashboard_buttons['reports'].clicked.connect(lambda: self.tab_widget.setCurrentIndex(3))
         
-        return card
-    
-    def create_products_tab(self):
-        """Create products management tab"""
-        widget = QWidget()
-        layout = QHBoxLayout(widget)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(20)
+        # Connect view refresh signals
+        self.dashboard_view.refresh_requested.connect(self.refresh_dashboard_dependents)
+        self.invoice_view.invoice_created.connect(self.on_invoice_created)
         
-        # Products list
-        list_frame = QFrame()
-        list_layout = QVBoxLayout(list_frame)
-        list_layout.setContentsMargins(20, 20, 20, 20)
-        
-        list_title = QLabel("📦 لیست کالاها")
-        list_title.setStyleSheet("font-size: 18px; font-weight: bold; background: transparent;")
-        
-        # Search
-        search_layout = QHBoxLayout()
-        self.product_search = QLineEdit()
-        self.product_search.setPlaceholderText("جستجو...")
-        search_btn = QPushButton("🔍 جستجو")
-        search_btn.clicked.connect(self.search_products)
-        
-        search_layout.addWidget(self.product_search)
-        search_layout.addWidget(search_btn)
-        
-        # Products table
-        self.products_table = QTableWidget()
-        self.products_table.setColumnCount(5)
-        self.products_table.setHorizontalHeaderLabels(["کد کالا", "نام کالا", "قیمت فروش", "موجودی", "واحد"])
-        self.products_table.selectionModel().selectionChanged.connect(self.on_product_selected)
-        
-        list_layout.addWidget(list_title)
-        list_layout.addLayout(search_layout)
-        list_layout.addWidget(self.products_table)
-        
-        # Product form
-        form_frame = QFrame()
-        form_layout = QVBoxLayout(form_frame)
-        form_layout.setContentsMargins(20, 20, 20, 20)
-        
-        form_title = QLabel("✏️ افزودن / ویرایش کالا")
-        form_title.setStyleSheet("font-size: 16px; font-weight: bold; background: transparent;")
-        
-        # Form fields
-        form_fields = QFormLayout()
-        
-        self.product_code_edit = QLineEdit()
-        self.product_name_edit = QLineEdit()
-        self.purchase_price_spin = QDoubleSpinBox()
-        self.purchase_price_spin.setRange(0, 999999999)
-        self.sale_price_spin = QDoubleSpinBox()
-        self.sale_price_spin.setRange(0, 999999999)
-        self.stock_quantity_spin = QSpinBox()
-        self.stock_quantity_spin.setRange(0, 999999)
-        self.unit_combo = QComboBox()
-        self.unit_combo.addItems(["عدد", "کیلوگرم", "بسته", "متر", "لیتر"])
-        
-        form_fields.addRow("کد کالا:", self.product_code_edit)
-        form_fields.addRow("نام کالا:", self.product_name_edit)
-        form_fields.addRow("قیمت خرید:", self.purchase_price_spin)
-        form_fields.addRow("قیمت فروش:", self.sale_price_spin)
-        form_fields.addRow("موجودی:", self.stock_quantity_spin)
-        form_fields.addRow("واحد:", self.unit_combo)
-        
-        # Buttons
-        buttons_layout = QVBoxLayout()
-        
-        add_btn = QPushButton("➕ ثبت کالای جدید")
-        add_btn.setStyleSheet("background: #10B981;")
-        add_btn.clicked.connect(self.add_product)
-        
-        update_btn = QPushButton("✏️ ویرایش کالا")
-        update_btn.clicked.connect(self.update_product)
-        
-        delete_btn = QPushButton("🗑️ حذف کالا")
-        delete_btn.setStyleSheet("background: #EF4444;")
-        delete_btn.clicked.connect(self.delete_product)
-        
-        buttons_layout.addWidget(add_btn)
-        buttons_layout.addWidget(update_btn)
-        buttons_layout.addWidget(delete_btn)
-        buttons_layout.addStretch()
-        
-        form_layout.addWidget(form_title)
-        form_layout.addLayout(form_fields)
-        form_layout.addLayout(buttons_layout)
-        
-        # Add to main layout
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.addWidget(list_frame)
-        splitter.addWidget(form_frame)
-        splitter.setSizes([700, 400])
-        
-        layout.addWidget(splitter)
-        
-        return widget
-    
-    def create_invoice_tab(self):
-        """Create invoice creation tab"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(20)
-        
-        # Customer info
-        customer_frame = QFrame()
-        customer_layout = QHBoxLayout(customer_frame)
-        customer_layout.setContentsMargins(20, 20, 20, 20)
-        
-        customer_layout.addWidget(QLabel("نام مشتری:"))
-        self.customer_name_edit = QLineEdit()
-        customer_layout.addWidget(self.customer_name_edit)
-        
-        customer_layout.addWidget(QLabel("شماره فاکتور:"))
-        self.invoice_number_edit = QLineEdit()
-        self.invoice_number_edit.setReadOnly(True)
-        self.generate_invoice_number()
-        customer_layout.addWidget(self.invoice_number_edit)
-        
-        customer_layout.addWidget(QLabel("تاریخ:"))
-        self.invoice_date_edit = QDateEdit()
-        self.invoice_date_edit.setDate(QDate.currentDate())
-        customer_layout.addWidget(self.invoice_date_edit)
-        
-        # Add item section
-        add_item_frame = QFrame()
-        add_item_layout = QHBoxLayout(add_item_frame)
-        add_item_layout.setContentsMargins(20, 20, 20, 20)
-        
-        add_item_layout.addWidget(QLabel("کالا:"))
-        self.invoice_product_combo = QComboBox()
-        add_item_layout.addWidget(self.invoice_product_combo)
-        
-        add_item_layout.addWidget(QLabel("تعداد:"))
-        self.invoice_quantity_spin = QSpinBox()
-        self.invoice_quantity_spin.setRange(1, 999999)
-        add_item_layout.addWidget(self.invoice_quantity_spin)
-        
-        add_item_btn = QPushButton("➕ افزودن ردیف")
-        add_item_btn.setStyleSheet("background: #10B981;")
-        add_item_btn.clicked.connect(self.add_invoice_item)
-        add_item_layout.addWidget(add_item_btn)
-        
-        # Invoice items table
-        self.invoice_items_table = QTableWidget()
-        self.invoice_items_table.setColumnCount(5)
-        self.invoice_items_table.setHorizontalHeaderLabels(["کالا", "تعداد", "قیمت واحد", "مبلغ کل", "حذف"])
-        
-        # Totals section
-        totals_frame = QFrame()
-        totals_layout = QHBoxLayout(totals_frame)
-        totals_layout.setContentsMargins(20, 20, 20, 20)
-        
-        totals_layout.addWidget(QLabel("تخفیف:"))
-        self.discount_spin = QDoubleSpinBox()
-        self.discount_spin.setRange(0, 999999999)
-        self.discount_spin.valueChanged.connect(self.calculate_totals)
-        totals_layout.addWidget(self.discount_spin)
-        
-        self.total_label = QLabel("مجموع: 0 ریال")
-        self.total_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #10B981;")
-        totals_layout.addWidget(self.total_label)
-        
-        save_invoice_btn = QPushButton("💾 ثبت و چاپ فاکتور")
-        save_invoice_btn.setStyleSheet("background: #3B82F6; font-size: 16px; padding: 15px;")
-        save_invoice_btn.clicked.connect(self.save_invoice)
-        totals_layout.addWidget(save_invoice_btn)
-        
-        layout.addWidget(customer_frame)
-        layout.addWidget(add_item_frame)
-        layout.addWidget(self.invoice_items_table, 1)
-        layout.addWidget(totals_frame)
-        
-        # Initialize invoice items list
-        self.current_invoice_items = []
-        
-        return widget
-    
-    # Dashboard methods
-    def load_dashboard_data(self):
-        """Load dashboard statistics"""
+    def refresh_all_views(self):
+        """Refresh all views"""
         try:
-            session = get_db_session()
+            self.dashboard_view.load_dashboard_data()
+            self.products_view.load_products()
+            self.status_bar.system_label.setText("📊 همه بخش‌ها به‌روزرسانی شدند")
             
-            # Today's statistics
-            today = date.today()
-            today_invoices = session.query(Invoice).filter(
-                Invoice.issue_date >= datetime.combine(today, datetime.min.time())
-            ).all()
-            
-            today_count = len(today_invoices)
-            today_total = sum(float(invoice.final_price) for invoice in today_invoices)
-            
-            # Total products
-            total_products = session.query(Product).count()
-            
-            # Update stat cards
-            self.update_stat_card(self.today_invoices_card, str(today_count))
-            self.update_stat_card(self.today_sales_card, f"{today_total:,.0f} ریال")
-            self.update_stat_card(self.total_products_card, str(total_products))
-            
-            # Recent invoices
-            recent_invoices = session.query(Invoice).order_by(
-                Invoice.issue_date.desc()
-            ).limit(10).all()
-            
-            self.populate_recent_invoices(recent_invoices)
-            
-            session.close()
-            
-        except Exception as e:
-            QMessageBox.critical(self, "خطا", f"خطا در بارگذاری اطلاعات داشبورد: {str(e)}")
-    
-    def update_stat_card(self, card, value):
-        """Update stat card value"""
-        value_label = card.findChild(QLabel, "stat_value")
-        if value_label:
-            value_label.setText(value)
-    
-    def populate_recent_invoices(self, invoices):
-        """Populate recent invoices table"""
-        self.recent_table.setRowCount(len(invoices))
-        
-        for row, invoice in enumerate(invoices):
-            self.recent_table.setItem(row, 0, QTableWidgetItem(invoice.invoice_number))
-            self.recent_table.setItem(row, 1, QTableWidgetItem(invoice.customer_name))
-            self.recent_table.setItem(row, 2, QTableWidgetItem(invoice.issue_date.strftime("%Y/%m/%d")))
-            self.recent_table.setItem(row, 3, QTableWidgetItem(f"{invoice.final_price:,.0f} ریال"))
-    
-    # Products methods
-    def load_products_data(self):
-        """Load products data"""
-        try:
-            session = get_db_session()
-            products = session.query(Product).order_by(Product.product_name).all()
-            
-            self.populate_products_table(products)
-            self.populate_invoice_products_combo(products)
-            
-            session.close()
-            
-        except Exception as e:
-            QMessageBox.critical(self, "خطا", f"خطا در بارگذاری کالاها: {str(e)}")
-    
-    def populate_products_table(self, products):
-        """Populate products table"""
-        self.products_table.setRowCount(len(products))
-        
-        for row, product in enumerate(products):
-            self.products_table.setItem(row, 0, QTableWidgetItem(product.product_code))
-            self.products_table.setItem(row, 1, QTableWidgetItem(product.product_name))
-            self.products_table.setItem(row, 2, QTableWidgetItem(f"{product.sale_price:,.0f}"))
-            self.products_table.setItem(row, 3, QTableWidgetItem(str(product.stock_quantity)))
-            self.products_table.setItem(row, 4, QTableWidgetItem(product.unit))
-            
-            # Store product object in first column
-            self.products_table.item(row, 0).setData(Qt.ItemDataRole.UserRole, product)
-    
-    def populate_invoice_products_combo(self, products):
-        """Populate invoice products combo"""
-        self.invoice_product_combo.clear()
-        self.invoice_product_combo.addItem("انتخاب کنید...", None)
-        
-        for product in products:
-            if product.stock_quantity > 0:
-                display_text = f"{product.product_name} ({product.product_code})"
-                self.invoice_product_combo.addItem(display_text, product)
-    
-    def search_products(self):
-        """Search products"""
-        search_text = self.product_search.text().strip()
-        
-        try:
-            session = get_db_session()
-            
-            if search_text:
-                products = session.query(Product).filter(
-                    (Product.product_name.contains(search_text)) |
-                    (Product.product_code.contains(search_text))
-                ).order_by(Product.product_name).all()
-            else:
-                products = session.query(Product).order_by(Product.product_name).all()
-            
-            self.populate_products_table(products)
-            session.close()
-            
-        except Exception as e:
-            QMessageBox.critical(self, "خطا", f"خطا در جستجو: {str(e)}")
-    
-    def on_product_selected(self):
-        """Handle product selection"""
-        selected_rows = self.products_table.selectionModel().selectedRows()
-        if selected_rows:
-            row = selected_rows[0].row()
-            product = self.products_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
-            
-            if product:
-                self.product_code_edit.setText(product.product_code)
-                self.product_name_edit.setText(product.product_name)
-                self.purchase_price_spin.setValue(float(product.purchase_price))
-                self.sale_price_spin.setValue(float(product.sale_price))
-                self.stock_quantity_spin.setValue(product.stock_quantity)
-                self.unit_combo.setCurrentText(product.unit)
-    
-    def add_product(self):
-        """Add new product"""
-        if not self.product_code_edit.text() or not self.product_name_edit.text():
-            QMessageBox.warning(self, "خطا", "لطفاً کد کالا و نام کالا را وارد کنید.")
-            return
-        
-        try:
-            session = get_db_session()
-            
-            # Check for duplicate code
-            existing = session.query(Product).filter(
-                Product.product_code == self.product_code_edit.text()
-            ).first()
-            
-            if existing:
-                QMessageBox.warning(self, "خطا", "کد کالای وارد شده قبلاً استفاده شده است.")
-                session.close()
-                return
-            
-            product = Product(
-                product_code=self.product_code_edit.text(),
-                product_name=self.product_name_edit.text(),
-                purchase_price=Decimal(str(self.purchase_price_spin.value())),
-                sale_price=Decimal(str(self.sale_price_spin.value())),
-                stock_quantity=self.stock_quantity_spin.value(),
-                unit=self.unit_combo.currentText()
+            # Reset status message after 3 seconds
+            QTimer.singleShot(3000, lambda: 
+                self.status_bar.system_label.setText("سیستم مدیریت فاکتور فروش")
             )
-            
-            session.add(product)
-            session.commit()
-            session.close()
-            
-            QMessageBox.information(self, "موفقیت", "کالا با موفقیت اضافه شد.")
-            self.clear_product_form()
-            self.load_products_data()
-            
         except Exception as e:
-            QMessageBox.critical(self, "خطا", f"خطا در افزودن کالا: {str(e)}")
+            QMessageBox.critical(self, "خطا", f"خطا در به‌روزرسانی: {str(e)}")
     
-    def update_product(self):
-        """Update selected product"""
-        selected_rows = self.products_table.selectionModel().selectedRows()
-        if not selected_rows:
-            QMessageBox.warning(self, "خطا", "لطفاً یک کالا برای ویرایش انتخاب کنید.")
-            return
+    def refresh_dashboard_dependents(self):
+        """Refresh views that depend on dashboard data"""
+        self.products_view.load_products()
+    
+    def on_invoice_created(self, message):
+        """Handle invoice creation"""
+        self.dashboard_view.load_dashboard_data()
+        self.products_view.load_products()
+        self.status_bar.system_label.setText(f"✅ {message}")
         
+        # Reset status message after 5 seconds
+        QTimer.singleShot(5000, lambda: 
+            self.status_bar.system_label.setText("سیستم مدیریت فاکتور فروش")
+        )
+    
+    def create_backup(self):
+        """Create database backup"""
         try:
-            row = selected_rows[0].row()
-            product = self.products_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
-            
-            session = get_db_session()
-            db_product = session.query(Product).filter(Product.id == product.id).first()
-            
-            if db_product:
-                db_product.product_code = self.product_code_edit.text()
-                db_product.product_name = self.product_name_edit.text()
-                db_product.purchase_price = Decimal(str(self.purchase_price_spin.value()))
-                db_product.sale_price = Decimal(str(self.sale_price_spin.value()))
-                db_product.stock_quantity = self.stock_quantity_spin.value()
-                db_product.unit = self.unit_combo.currentText()
-                
-                session.commit()
-                session.close()
-                
-                QMessageBox.information(self, "موفقیت", "کالا با موفقیت ویرایش شد.")
-                self.clear_product_form()
-                self.load_products_data()
-            
+            success, message = self.db_service.backup_database()
+            if success:
+                QMessageBox.information(self, "موفقیت", message)
+                self.status_bar.system_label.setText("💾 پشتیبان با موفقیت ایجاد شد")
+            else:
+                QMessageBox.critical(self, "خطا", message)
+                self.status_bar.system_label.setText("❌ خطا در ایجاد پشتیبان")
         except Exception as e:
-            QMessageBox.critical(self, "خطا", f"خطا در ویرایش کالا: {str(e)}")
+            QMessageBox.critical(self, "خطا", f"خطا در ایجاد پشتیبان: {str(e)}")
     
-    def delete_product(self):
-        """Delete selected product"""
-        selected_rows = self.products_table.selectionModel().selectedRows()
-        if not selected_rows:
-            QMessageBox.warning(self, "خطا", "لطفاً یک کالا برای حذف انتخاب کنید.")
-            return
+    def show_settings(self):
+        """Show settings dialog"""
+        try:
+            settings_dialog = SettingsDialog(self)
+            settings_dialog.exec()
+        except Exception as e:
+            QMessageBox.critical(self, "خطا", f"خطا در باز کردن تنظیمات: {str(e)}")
+    
+    def show_about(self):
+        """Show about dialog"""
+        about_text = """
+        <h2>سیستم مدیریت فاکتور فروش</h2>
+        <p><b>نسخه:</b> 2.0</p>
+        <p><b>سازنده:</b> KimiVerse</p>
+        <p><b>توضیحات:</b> نرم‌افزار پیشرفته مدیریت فاکتور فروش با قابلیت‌های:</p>
+        <ul>
+        <li>صدور فاکتور با امکان انتخاب پس‌زمینه</li>
+        <li>مدیریت کالاها با کنترل موجودی</li>
+        <li>گزارش‌گیری پیشرفته</li>
+        <li>خروجی PDF و تصویر</li>
+        <li>پشتیبانی کامل از تاریخ شمسی</li>
+        <li>رابط کاربری مدرن و فارسی</li>
+        </ul>
+        <p><b>تاریخ ساخت:</b> ۱۴۰۳</p>
+        """
         
+        QMessageBox.about(self, "درباره نرم‌افزار", about_text)
+    
+    def show_help(self):
+        """Show help dialog"""
+        help_text = """
+        <h3>راهنمای سریع استفاده</h3>
+        
+        <h4>📊 داشبورد:</h4>
+        <p>• مشاهده آمار کلی سیستم</p>
+        <p>• کنترل آخرین فاکتورها</p>
+        <p>• مدیریت کالاهای کم‌موجود</p>
+        
+        <h4>🧾 صدور فاکتور:</h4>
+        <p>• وارد کردن اطلاعات مشتری</p>
+        <p>• انتخاب کالاها و تعداد</p>
+        <p>• اعمال تخفیف</p>
+        <p>• خروجی PDF یا تصویر</p>
+        
+        <h4>📦 مدیریت کالاها:</h4>
+        <p>• افزودن کالای جدید</p>
+        <p>• ویرایش اطلاعات کالا</p>
+        <p>• کنترل موجودی</p>
+        
+        <h4>📈 گزارشات:</h4>
+        <p>• گزارش فروش روزانه/ماهانه</p>
+        <p>• گزارش موجودی کالاها</p>
+        <p>• آمار مشتریان</p>
+        
+        <p><b>کلیدهای میانبر:</b></p>
+        <p>Ctrl+N: فاکتور جدید</p>
+        <p>Ctrl+P: کالای جدید</p>
+        <p>F5: به‌روزرسانی</p>
+        <p>Ctrl+Q: خروج</p>
+        """
+        
+        help_dialog = QMessageBox(self)
+        help_dialog.setWindowTitle("راهنمای استفاده")
+        help_dialog.setText(help_text)
+        help_dialog.setTextFormat(Qt.TextFormat.RichText)
+        help_dialog.exec()
+    
+    def closeEvent(self, event):
+        """Handle window close event"""
         reply = QMessageBox.question(
-            self, "تأیید حذف",
-            "آیا از حذف این کالا اطمینان دارید؟",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            self,
+            'تأیید خروج',
+            'آیا مطمئن هستید که می‌خواهید از برنامه خارج شوید؟',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
         )
         
         if reply == QMessageBox.StandardButton.Yes:
+            # Save any pending data
             try:
-                row = selected_rows[0].row()
-                product = self.products_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
-                
-                session = get_db_session()
-                db_product = session.query(Product).filter(Product.id == product.id).first()
-                
-                if db_product:
-                    session.delete(db_product)
-                    session.commit()
-                    session.close()
-                    
-                    QMessageBox.information(self, "موفقیت", "کالا با موفقیت حذف شد.")
-                    self.clear_product_form()
-                    self.load_products_data()
-                
-            except Exception as e:
-                QMessageBox.critical(self, "خطا", f"خطا در حذف کالا: {str(e)}")
-    
-    def clear_product_form(self):
-        """Clear product form"""
-        self.product_code_edit.clear()
-        self.product_name_edit.clear()
-        self.purchase_price_spin.setValue(0)
-        self.sale_price_spin.setValue(0)
-        self.stock_quantity_spin.setValue(0)
-        self.unit_combo.setCurrentIndex(0)
-    
-    # Invoice methods
-    def generate_invoice_number(self):
-        """Generate new invoice number"""
-        timestamp = datetime.now().strftime("%Y%m%d")
-        random_num = random.randint(1000, 9999)
-        invoice_number = f"INV-{timestamp}-{random_num}"
-        self.invoice_number_edit.setText(invoice_number)
-    
-    def add_invoice_item(self):
-        """Add item to current invoice"""
-        if self.invoice_product_combo.currentIndex() == 0:
-            QMessageBox.warning(self, "خطا", "لطفاً یک کالا انتخاب کنید.")
-            return
-        
-        product = self.invoice_product_combo.currentData()
-        quantity = self.invoice_quantity_spin.value()
-        
-        if quantity > product.stock_quantity:
-            QMessageBox.warning(self, "خطا", f"موجودی کافی نیست. موجودی فعلی: {product.stock_quantity}")
-            return
-        
-        # Check if product already exists in items
-        for item in self.current_invoice_items:
-            if item['product'].id == product.id:
-                item['quantity'] += quantity
-                item['row_total'] = item['quantity'] * item['unit_price']
-                break
+                self.db_service.close()
+            except:
+                pass
+            event.accept()
         else:
-            # Add new item
-            item = {
-                'product': product,
-                'quantity': quantity,
-                'unit_price': float(product.sale_price),
-                'row_total': quantity * float(product.sale_price)
-            }
-            self.current_invoice_items.append(item)
-        
-        self.refresh_invoice_items_table()
-        self.calculate_totals()
-        
-        # Reset form
-        self.invoice_product_combo.setCurrentIndex(0)
-        self.invoice_quantity_spin.setValue(1)
-    
-    def refresh_invoice_items_table(self):
-        """Refresh invoice items table"""
-        self.invoice_items_table.setRowCount(len(self.current_invoice_items))
-        
-        for row, item in enumerate(self.current_invoice_items):
-            self.invoice_items_table.setItem(row, 0, QTableWidgetItem(item['product'].product_name))
-            self.invoice_items_table.setItem(row, 1, QTableWidgetItem(str(item['quantity'])))
-            self.invoice_items_table.setItem(row, 2, QTableWidgetItem(f"{item['unit_price']:,.0f}"))
-            self.invoice_items_table.setItem(row, 3, QTableWidgetItem(f"{item['row_total']:,.0f}"))
-            
-            # Delete button
-            delete_btn = QPushButton("🗑️")
-            delete_btn.setStyleSheet("background: #EF4444; max-width: 30px;")
-            delete_btn.clicked.connect(lambda checked, r=row: self.remove_invoice_item(r))
-            self.invoice_items_table.setCellWidget(row, 4, delete_btn)
-    
-    def remove_invoice_item(self, row):
-        """Remove item from invoice"""
-        if 0 <= row < len(self.current_invoice_items):
-            self.current_invoice_items.pop(row)
-            self.refresh_invoice_items_table()
-            self.calculate_totals()
-    
-    def calculate_totals(self):
-        """Calculate invoice totals"""
-        subtotal = sum(item['row_total'] for item in self.current_invoice_items)
-        discount = self.discount_spin.value()
-        final_total = subtotal - discount
-        
-        self.total_label.setText(f"مجموع: {final_total:,.0f} ریال")
-    
-    def save_invoice(self):
-        """Save current invoice"""
-        if not self.customer_name_edit.text().strip():
-            QMessageBox.warning(self, "خطا", "لطفاً نام مشتری را وارد کنید.")
-            return
-        
-        if not self.current_invoice_items:
-            QMessageBox.warning(self, "خطا", "لطفاً حداقل یک کالا به فاکتور اضافه کنید.")
-            return
-        
-        try:
-            session = get_db_session()
-            
-            # Calculate totals
-            subtotal = sum(item['row_total'] for item in self.current_invoice_items)
-            discount = Decimal(str(self.discount_spin.value()))
-            final_total = subtotal - discount
-            
-            # Create invoice
-            invoice = Invoice(
-                invoice_number=self.invoice_number_edit.text(),
-                customer_name=self.customer_name_edit.text().strip(),
-                issue_date=self.invoice_date_edit.date().toPython(),
-                total_price=Decimal(str(subtotal)),
-                discount=discount,
-                final_price=Decimal(str(final_total))
-            )
-            
-            session.add(invoice)
-            session.flush()  # Get the invoice ID
-            
-            # Add invoice items and update stock
-            for item_data in self.current_invoice_items:
-                invoice_item = InvoiceItem(
-                    invoice_id=invoice.id,
-                    product_id=item_data['product'].id,
-                    quantity=item_data['quantity'],
-                    unit_price=Decimal(str(item_data['unit_price'])),
-                    row_total=Decimal(str(item_data['row_total']))
-                )
-                session.add(invoice_item)
-                
-                # Update product stock
-                product = session.query(Product).filter(Product.id == item_data['product'].id).first()
-                if product:
-                    product.stock_quantity -= item_data['quantity']
-            
-            session.commit()
-            session.close()
-            
-            QMessageBox.information(self, "موفقیت", f"فاکتور شماره {invoice.invoice_number} با موفقیت ثبت شد.")
-            
-            # Clear form
-            self.clear_invoice_form()
-            self.load_products_data()
-            self.load_dashboard_data()
-            
-        except Exception as e:
-            QMessageBox.critical(self, "خطا", f"خطا در ثبت فاکتور: {str(e)}")
-    
-    def clear_invoice_form(self):
-        """Clear invoice form"""
-        self.customer_name_edit.clear()
-        self.current_invoice_items.clear()
-        self.discount_spin.setValue(0)
-        self.invoice_date_edit.setDate(QDate.currentDate())
-        self.generate_invoice_number()
-        self.refresh_invoice_items_table()
-        self.calculate_totals()
+            event.ignore()
