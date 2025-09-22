@@ -2,7 +2,6 @@
 Dashboard View for Persian Invoicing System
 Enhanced with refresh functionality and improved statistics
 """
-
 from datetime import datetime, timedelta
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                            QLabel, QPushButton, QFrame, QTableWidget, 
